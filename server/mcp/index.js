@@ -27,6 +27,7 @@
 const { Readable } = require('stream')
 const { McpServer, createMcpHandler, fromJsonSchema } = require('@modelcontextprotocol/server')
 const { findLink, findLinkById } = require('../services/ai-links')
+const deckLocks = require('../services/deck-locks')
 const { deepEqual } = require('../services/deck-doc')
 const format = require('./format')
 const markdown = require('./markdown')
@@ -411,6 +412,8 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     await markdown.ready()
     const current = await loadDeck(link)
     if (!current) return failure(GONE)
+    // Past its owner's plan's limit, a presentation is read-only (deck-locks.js)
+    if (await deckLocks.isDeckLocked(storage, link.deckId)) return failure(deckLocks.lockedMessage(link.ownerPlan, { own: false }))
     if (!collab) return failure('Editing through a link needs live editing, which this server doesn\'t have.')
     const datasets = (await storage.getPresentationDatasets(link.deckId).catch(() => null))?.map(d => ({ name: d.alias || d.name, columns: d.columns || [] })) ?? null
     try {

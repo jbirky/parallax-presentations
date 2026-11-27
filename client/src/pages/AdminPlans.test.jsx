@@ -7,7 +7,10 @@ vi.mock('../utils/api', () => ({
   api: {
     addPlanPrice: vi.fn(async () => ({ plan: {} })),
     removePlanPrice: vi.fn(async () => ({ plan: {} })),
-    savePlan: vi.fn(async () => ({ plan: {}, unexpired: 0 })),
+    savePlan: vi.fn(async () => ({ plan: {} })),
+    getEducationDomains: vi.fn(async () => ({ domains: [{ domain: 'ethz.ch', note: 'ETH Zürich' }], coupon: { id: 'coupon_edu50', percentOff: 50 } })),
+    addEducationDomain: vi.fn(async () => ({})),
+    dropEducationDomain: vi.fn(async () => ({})),
   },
 }))
 import { api } from '../utils/api'
@@ -38,7 +41,7 @@ async function render() {
   const root = createRoot(el)
   const onPlanChanged = vi.fn()
   await act(async () => root.render(<AdminDashboard data={data} tab="plans" onPlanChanged={onPlanChanged} />))
-  const card = name => [...el.querySelectorAll('strong')].find(s => s.textContent === name).closest('div[style*="border-radius: 8px"]')
+  const card = name => [...el.querySelectorAll('strong')].find(s => s.textContent === name).closest('.admin-plan-card')
   const button = (scope, text) => [...scope.querySelectorAll('button')].find(b => b.textContent.trim() === text || b.getAttribute('aria-label') === text)
   return { el, root, card, button, onPlanChanged }
 }
@@ -88,5 +91,28 @@ describe('a plan\'s prices, in /admin', () => {
     expect(form).toMatchObject({ perSeat: true, minSeats: '3' })
     expect(fromPlanForm({ ...form, id: 'team' })).toMatchObject({ perSeat: true, minSeats: 3 })
     expect(fromPlanForm({ ...form, id: 'team', perSeat: false })).toMatchObject({ perSeat: false, minSeats: null })
+  })
+})
+
+describe('the education price, in /admin', () => {
+  it('shows the coupon and the schools added, and adds and takes off a domain', async () => {
+    const page = await render()
+    const panel = page.el.querySelector('.edu-domains')
+    expect(panel.textContent).toContain('Coupon coupon_edu50: 50% off, for accounts with a verified school email.')
+    expect([...panel.querySelectorAll('li')].map(li => li.textContent)).toEqual(['ethz.ch · ETH Zürich×'])
+    await setValue(panel.querySelector('input[aria-label="School domain"]'), 'mpg.de')
+    await setValue(panel.querySelector('input[aria-label="Note"]'), 'Max Planck')
+    await act(async () => panel.querySelector('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })))
+    expect(api.addEducationDomain).toHaveBeenCalledWith('mpg.de', 'Max Planck')
+    await act(async () => page.button(panel, 'Stop counting ethz.ch').click())
+    expect(api.dropEducationDomain).toHaveBeenCalledWith('ethz.ch')
+    act(() => page.root.unmount())
+  })
+
+  it('says when there\'s no coupon', async () => {
+    api.getEducationDomains.mockResolvedValueOnce({ domains: [], coupon: null })
+    const page = await render()
+    expect(page.el.querySelector('.edu-domains').textContent).toContain('No coupon is set (STRIPE_EDUCATION_COUPON)')
+    act(() => page.root.unmount())
   })
 })

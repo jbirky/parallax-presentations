@@ -102,6 +102,44 @@ describe('the Teams dialog', () => {
     act(() => root.unmount())
   })
 
+  it('emails an invitation to an address, where the server sends email, and says if it didn’t go', async () => {
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner', { inviteEmails: true }))
+    const { el, button, root } = await render()
+    const input = el.querySelector('input[aria-label="Email address to send the invitation to"]')
+    const type = async value => {
+      const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set
+      await act(async () => { set.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    }
+    expect(button('Make link')).toBeTruthy()
+    await type('new@example.com')
+    api.createTeamInvite.mockResolvedValueOnce({ token: 'T'.repeat(43), invite: {}, emailed: true })
+    await click(button('Send invite'))
+    expect(api.createTeamInvite).toHaveBeenCalledWith('t1', { role: 'member', email: 'new@example.com', days: 30 })
+    expect(el.querySelector('[role="status"]').textContent).toContain('Invitation emailed to new@example.com')
+    // The link is still there to copy
+    expect(el.querySelector('input[aria-label="New invite link"]').value).toBe(teamJoinUrl('T'.repeat(43)))
+
+    await type('late@example.com')
+    api.createTeamInvite.mockResolvedValueOnce({ token: 'U'.repeat(43), invite: {}, emailed: false, emailError: 'The email couldn’t be sent.' })
+    await click(button('Send invite'))
+    const status = el.querySelector('[role="status"]').textContent
+    expect(status).toContain('The invitation wasn’t emailed: The email couldn’t be sent.')
+    expect(status).toContain('send it to late@example.com')
+    act(() => root.unmount())
+  })
+
+  it('makes a link for an address to send yourself, where the server sends no email', async () => {
+    api.getTeam.mockResolvedValue(team('owner', 'u-owner'))
+    const { el, button, root } = await render()
+    const input = el.querySelector('input[aria-label="Only for this email address"]')
+    const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set
+    await act(async () => { set.call(input, 'new@example.com'); input.dispatchEvent(new Event('input', { bubbles: true })) })
+    expect(button('Send invite')).toBeUndefined()
+    await click(button('Make link'))
+    expect(el.querySelector('[role="status"]').textContent).toContain('Copy the link now and send it to new@example.com')
+    act(() => root.unmount())
+  })
+
   it('changes roles, removes people and revokes links', async () => {
     api.getTeam.mockResolvedValue(team('owner', 'u-owner'))
     const { el, button, root } = await render()

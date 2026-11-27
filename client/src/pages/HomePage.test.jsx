@@ -17,7 +17,12 @@ vi.mock('../utils/api', () => ({
     removeCollaborator: vi.fn(async () => ({ success: true })),
   }, { get: (api, name) => api[name] ?? (api[name] = vi.fn(async () => null)) }),
 }))
-vi.mock('@clerk/clerk-react', () => ({ UserButton: () => null }))
+vi.mock('@clerk/clerk-react', () => {
+  const UserButton = () => null
+  UserButton.MenuItems = () => null
+  UserButton.Action = () => null
+  return { UserButton }
+})
 import { api } from '../utils/api'
 import HomePage from './HomePage'
 

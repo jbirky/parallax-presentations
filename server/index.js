@@ -20,7 +20,7 @@ const createStorage = require('./storage')
 const storage = createStorage()
 const { authStack, requireUser, isAdmin, IS_CLOUD, PLAN_LIMITS } = require('./middleware/auth')
 const { isR2Enabled, streamFromR2, putBufferToR2, deleteFromR2, deleteManyFromR2 } = require('./services/r2')
-const { handleUpload: r2Upload, deletePresentationAndFiles, sweepExpiredPresentations } = require('./services/upload-service')
+const { handleUpload: r2Upload, deletePresentationAndFiles } = require('./services/upload-service')
 const { setUploadHeaders } = require('./utils/upload-headers')
 const { localizeLibraries } = require('./services/libraries')
 const {
@@ -36,12 +36,17 @@ const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
 const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
+const emailService = require('./services/email')
+const { teamInviteEmail } = require('./services/team-invite-email')
 const teamSpace = require('./services/team-space')
 const folders = require('./services/folders')
 const teamLibrary = require('./services/team-library')
 const aiLinks = require('./services/ai-links')
 const { createMcpRoute } = require('./mcp')
-const { deckAccess: deckAccessFor, ownerOnly, canEdit } = collaboration
+const { deckAccess: deckAccessFor, ownerOnly, canEdit, canCopy } = collaboration
+const deckLocks = require('./services/deck-locks')
+const education = require('./services/education')
+const signupSurvey = require('./services/signup-survey')
 const { ingestDataset, saveUpload, datasetName, applyQuery, deleteDatasetFile } = require('./services/dataset-service')
 const { readView, preview, refreshOutputColumns } = require('./services/dataset-views')
 const { normalizeTransforms } = require('./services/dataset-transforms')
@@ -336,7 +341,7 @@ app.get('/examples/:slug', deckPageLimiter, async (req, res, next) => {
     res.type('html').send(sitePages.examplePage({
       origin: siteOrigin(req), example, others: cards.filter(e => e.slug !== slug),
       guestEnabled: isGuestModeEnabled(), analytics: analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null,
-      index: SEARCH_INDEXING && example.slug !== hero,
+      index: SEARCH_INDEXING && example.slug !== hero, cloud: IS_CLOUD,
     }))
   } catch (err) {
     next(err)
@@ -754,20 +759,21 @@ const belowTemplateLimit = (req, res) => belowLimit(res,
   'SELECT COUNT(*)::int AS count FROM presentations WHERE user_id = $1 AND is_template = true', [req.userId],
   MAX_TEMPLATES, `You can keep up to ${MAX_TEMPLATES} templates. Delete one to save another.`)
 
+// A plan's presentation limit is how many of them can be edited: past it,
+// the oldest become read-only (services/deck-locks.js), so making another is
+// never refused. Guest mode alone still holds one presentation.
 async function checkPresentationQuota(req, res) {
-  if (!IS_CLOUD || !req.userId) return true
+  if (!IS_CLOUD || !req.userId || !req.isGuest) return true
   const limits = planFor(req.userPlan)
   if (limits.maxPresentations === Infinity) return true
   const { rows } = await storage.query(
-    'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
+    'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false',
     [req.userId]
   )
   if (rows[0].count >= limits.maxPresentations) {
     res.status(403).json({
       error: 'presentation_limit_reached',
-      message: limits.id === 'guest'
-        ? 'Guest mode is limited to one presentation.'
-        : `The ${limits.name} plan is limited to ${limits.maxPresentations} presentations.`,
+      message: 'Guest mode is limited to one presentation.',
       limit: limits.maxPresentations, current: rows[0].count,
     })
     return false
@@ -781,7 +787,7 @@ app.get('/api/me', async (req, res) => {
   try {
     const limits = planFor(req.userPlan)
     const { rows } = await storage.query(
-      'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false AND (expires_at IS NULL OR expires_at > NOW())',
+      'SELECT COUNT(*)::int as count FROM presentations WHERE user_id = $1 AND team_id IS NULL AND is_template = false',
       [req.userId]
     )
     res.json({
@@ -791,16 +797,42 @@ app.get('/api/me', async (req, res) => {
       presentationCount: rows[0].count,
       storageUsed: await storageUsedBytes(storage, req.userId),
       limits: {
+        // How many of their own presentations they can edit; older ones are read-only
         maxPresentations: limits.maxPresentations === Infinity ? null : limits.maxPresentations,
-        expirationDays: limits.expirationDays,
         storageBytes: limits.storageBytes,
         maxFileBytes: limits.maxFileBytes,
       },
       billing: stripeService.isEnabled(),
       isAdmin: isAdmin(req),
+      // The sign-up questions, not answered yet (services/signup-survey.js)
+      survey: { pending: !req.isGuest && !!req.userId && await signupSurvey.isPending(storage, req.userId) },
     })
   } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
 })
+
+// --- The sign-up questions (cloud only, signed-in accounts; services/signup-survey.js) ---
+// GET /api/me/survey: { questions, answers }; PUT saves answers (every
+// question optional, at least one answered).
+function surveyRoute(handler) {
+  return async (req, res) => {
+    if (!IS_CLOUD || !storage.query || req.isGuest || !req.userId) return res.status(404).json({ error: 'Not found' })
+    try {
+      await handler(req, res)
+    } catch (err) {
+      if (err instanceof signupSurvey.SurveyError) return res.status(err.status).json({ error: err.message })
+      res.status(500).json({ error: safeErrorMessage(err) })
+    }
+  }
+}
+
+app.get('/api/me/survey', surveyRoute(async (req, res) => {
+  res.json({ questions: signupSurvey.QUESTIONS, answers: await signupSurvey.getAnswers(storage, req.userId) })
+}))
+
+app.put('/api/me/survey', surveyRoute(async (req, res) => {
+  res.json({ answers: await signupSurvey.saveAnswers(storage, req.userId, req.body || {}) })
+}))
+
 
 // GET /api/admin/overview — sign-ups, per-user storage and processing, and
 // container CPU/memory. Not found for anyone who isn't an admin.
@@ -857,7 +889,7 @@ function planRoute(handler) {
     try {
       await handler(req, res)
     } catch (err) {
-      if (err instanceof PlanError) return res.status(err.status).json({ error: err.message })
+      if (err instanceof PlanError || err instanceof education.EducationError) return res.status(err.status).json({ error: err.message })
       console.error('Plan edit error:', err.message)
       res.status(500).json({ error: safeErrorMessage(err) })
     }
@@ -871,9 +903,9 @@ app.post('/api/admin/plans', planRoute(async (req, res) => {
 }))
 
 app.put('/api/admin/plans/:id', planRoute(async (req, res) => {
-  const { plan, unexpired } = await updatePlan(storage, req.params.id, req.body || {})
-  console.log(`Admin saved plan ${plan.id}${unexpired ? `; ${unexpired} presentations stopped expiring` : ''}`)
-  res.json({ plan: planJSON(plan), unexpired })
+  const { plan } = await updatePlan(storage, req.params.id, req.body || {})
+  console.log(`Admin saved plan ${plan.id}`)
+  res.json({ plan: planJSON(plan) })
 }))
 
 app.delete('/api/admin/plans/:id', planRoute(async (req, res) => {
@@ -898,6 +930,40 @@ app.delete('/api/admin/plans/:id/prices/:priceId', planRoute(async (req, res) =>
   res.json({ plan: planJSON(plan) })
 }))
 
+// The education price's school domains, beyond those known by their ending
+// (services/education.js): GET lists them, with whether the coupon is set
+// and what it takes off; POST { domain, note? } adds one; DELETE removes one.
+app.get('/api/admin/education-domains', planRoute(async (req, res) => {
+  const coupon = education.educationCoupon()
+  let discount = null
+  if (coupon && stripeService.isEnabled()) discount = await stripeService.describeCoupon(coupon)
+  res.json({ domains: await education.listDomains(storage), coupon: coupon ? { id: coupon, ...(discount || {}) } : null })
+}))
+
+app.post('/api/admin/education-domains', planRoute(async (req, res) => {
+  const row = await education.addDomain(storage, req.body?.domain, req.body?.note)
+  console.log(`Admin added education domain ${row.domain}`)
+  res.status(201).json({ domain: row })
+}))
+
+app.delete('/api/admin/education-domains/:domain', planRoute(async (req, res) => {
+  await education.removeDomain(storage, req.params.domain)
+  console.log(`Admin removed education domain ${req.params.domain}`)
+  res.json({ success: true })
+}))
+
+// The sign-up answers, for admins: GET /api/admin/survey totals them;
+// /api/admin/survey.csv is every answer, one account a line
+app.get('/api/admin/survey', planRoute(async (req, res) => {
+  res.json({ questions: signupSurvey.QUESTIONS, ...await signupSurvey.summary(storage) })
+}))
+
+app.get('/api/admin/survey.csv', planRoute(async (req, res) => {
+  res.set('Content-Type', 'text/csv; charset=utf-8')
+  res.set('Content-Disposition', `attachment; filename="parallax-signup-answers-${new Date().toISOString().slice(0, 10)}.csv"`)
+  res.send(await signupSurvey.csv(storage))
+}))
+
 // ---- Billing API ----
 if (IS_CLOUD && stripeService.isEnabled()) {
   // Body: { plan, priceId? }, one of the plans for sale, at one of its prices
@@ -911,14 +977,30 @@ if (IS_CLOUD && stripeService.isEnabled()) {
       if (!price) return res.status(400).json({ error: 'The plan isn’t sold at that price' })
       const { rows } = await storage.query('SELECT email, name FROM users WHERE id = $1', [req.userId])
       if (!rows[0]) return res.status(404).json({ error: 'User not found' })
+      // Students and educators: the education coupon, for a verified school email
+      const coupon = education.educationCoupon()
+      const school = coupon ? await education.educationFor(storage, req.authId) : { eligible: false }
       const baseUrl = req.headers.origin || 'https://parallax-presentations.com'
       const session = await stripeService.createCheckoutSession(
         storage, req.userId, rows[0].email, rows[0].name, plan,
         `${baseUrl}/dashboard?billing=success`,
         `${baseUrl}/dashboard?billing=cancel`,
-        price
+        price,
+        { coupon: school.eligible ? coupon : null }
       )
-      res.json({ url: session.url })
+      res.json({ url: session.url, education: school.eligible })
+    } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
+  })
+
+  // GET /api/billing/discounts — what the person's checkout takes off:
+  // { promotionCodes, education: { percentOff, amountOffCents, duration,
+  // durationMonths, eligible, domain } or null when there's no education price }
+  app.get('/api/billing/discounts', requireUser, async (req, res) => {
+    try {
+      const coupon = education.educationCoupon()
+      const discount = coupon ? await stripeService.describeCoupon(coupon) : null
+      const school = discount ? await education.educationFor(storage, req.authId) : null
+      res.json({ promotionCodes: true, education: discount ? { ...discount, ...school } : null })
     } catch (err) { res.status(500).json({ error: safeErrorMessage(err) }) }
   })
 
@@ -1078,13 +1160,17 @@ function escapeHtml(str) {
 }
 
 // GET /api/presentations - list summaries
+// Each one past its owner's plan's limit is marked locked (read-only)
 app.get('/api/presentations', async (req, res) => {
   try {
-    const excludeExpired = IS_CLOUD && !!planFor(req.userPlan).expirationDays
-    const own = await storage.listPresentations(req.userId, { excludeExpired, personalOnly: true })
-    const shared = IS_CLOUD && storage.query && !req.isGuest
+    let own = await storage.listPresentations(req.userId, { personalOnly: true })
+    let shared = IS_CLOUD && storage.query && !req.isGuest
       ? await collaboration.listSharedPresentations(storage, req.userId)
       : []
+    if (IS_CLOUD && storage.query && !req.isGuest) {
+      own = await deckLocks.markLocked(storage, own, { userId: req.userId, userPlan: req.userPlan })
+      shared = (await deckLocks.markLocked(storage, shared)).map(({ ownerPlan, ...p }) => p)
+    }
     res.json([...own, ...shared])
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
@@ -1191,11 +1277,7 @@ app.post('/api/presentations', async (req, res) => {
       }
     }
 
-    const limits = planFor(req.userPlan)
-    const expiresAt = !team && limits.expirationDays
-      ? new Date(Date.now() + limits.expirationDays * 86400000).toISOString()
-      : null
-    const created = await storage.createPresentation(presentation, req.userId, expiresAt)
+    const created = await storage.createPresentation(presentation, req.userId)
     if (team) {
       await storage.query('UPDATE presentations SET team_id = $2, folder_id = $3 WHERE id = $1', [created.id, team.teamId, team.folderId])
       Object.assign(created, team)
@@ -2152,7 +2234,9 @@ app.delete('/api/presentations/:id', requireValidId(), deckAccess(), ownerOnly, 
 // POST /api/presentations/:id/duplicate
 // A personal presentation is copied by its owner; a team's by its owner,
 // admins and members, into the same team and folder.
-app.post('/api/presentations/:id/duplicate', requireValidId(), deckAccess(), canEdit, async (req, res) => {
+// A read-only one (past the owner's plan's limit) can be copied: the copy is
+// their newest, so it can be edited.
+app.post('/api/presentations/:id/duplicate', requireValidId(), deckAccess(), canCopy, async (req, res) => {
   try {
     const { teamId, teamRole } = req.deck
     if (teamId ? !['owner', 'admin', 'member'].includes(teamRole) : req.deck.role !== 'owner') {
@@ -2397,7 +2481,12 @@ app.get('/api/presentations/:id/collaborators', requireValidId(), deckAccess(), 
     if (req.deck.role !== 'owner') {
       people = people.map(p => (p.role === 'owner' || p.id === req.userId ? p : { ...p, email: collaboration.emailHint(p.email) }))
     }
-    res.json({ role: req.deck.role, you: req.userId, people, inviteToken, teamId: req.deck.teamId || null, teamRole: req.deck.teamRole || null })
+    // locked: past its owner's plan's limit, so read-only (services/deck-locks.js)
+    const locked = !!req.deck.locked
+    res.json({
+      role: req.deck.role, you: req.userId, people, inviteToken, teamId: req.deck.teamId || null, teamRole: req.deck.teamRole || null,
+      locked, lockedMessage: locked ? deckLocks.lockedMessage(req.deck.ownerPlan, { own: req.deck.ownerId === req.userId }) : null,
+    })
   } catch (err) {
     res.status(500).json({ error: safeErrorMessage(err) })
   }
@@ -2622,7 +2711,8 @@ app.get('/api/teams', teamRoute(async (req, res) => {
 app.get('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
   const team = await teams.getTeam(storage, req.params.id, req.userId)
   // For its owner's billing: the fewest seats its plan sells, and whether it can be paid for here
-  res.json({ ...team, minSeats: planFor(team.plan).minSeats || 1, billing: stripeService.isEnabled() })
+  // and whether invite links for an email address are emailed there
+  res.json({ ...team, minSeats: planFor(team.plan).minSeats || 1, billing: stripeService.isEnabled(), inviteEmails: emailService.isEnabled() })
 }))
 
 // PATCH /api/teams/:id - rename it: { name }
@@ -2631,11 +2721,39 @@ app.patch('/api/teams/:id', requireValidId(), teamRoute(async (req, res) => {
 }))
 
 // POST /api/teams/:id/invites - a new invite link: { role, email?, days? }.
-// The answer's token is the only time the link's secret is shown.
+// The answer's token is the only time the link's secret is shown. A link for
+// an email address is emailed there too, where this server sends email
+// (services/email.js): `emailed` says whether it went, and `emailError` why
+// not, so the person inviting can send the link themselves.
 app.post('/api/teams/:id/invites', requireValidId(), teamRoute(async (req, res) => {
   const { role, email, days } = req.body || {}
-  res.status(201).json(await teams.createInvite(storage, req.params.id, req.userId, { role, email, days }))
+  const made = await teams.createInvite(storage, req.params.id, req.userId, { role, email, days })
+  res.status(201).json(made.invite.email ? { ...made, ...await emailTeamInvite(req, made) } : made)
 }))
+
+// The invitation for an invite link made for one address, emailed there:
+// { emailed, emailError? }. Someone inviting can have at most
+// INVITE_EMAILS_PER_HOUR sent in an hour; past that, the link is still made.
+const INVITE_EMAILS_PER_HOUR = 20
+async function emailTeamInvite(req, { token, invite }) {
+  if (!emailService.isEnabled()) return { emailed: false, emailError: 'This server doesn’t send email.' }
+  if (await teams.recentEmailInvites(storage, req.userId) > INVITE_EMAILS_PER_HOUR) {
+    return { emailed: false, emailError: `You’ve had ${INVITE_EMAILS_PER_HOUR} invitations emailed in the last hour, the most there can be.` }
+  }
+  try {
+    const found = await teams.findInvite(storage, token)
+    const origin = siteOrigin(req)
+    const message = teamInviteEmail({
+      teamName: found.teamName, invitedBy: found.invitedBy, role: invite.role, email: invite.email,
+      expiresAt: invite.expiresAt, url: `${origin}/teams/join/${token}`, origin,
+    })
+    await emailService.send({ to: invite.email, ...message, replyTo: 'support@parallax-presentations.com', idempotencyKey: `team-invite-${invite.id}` })
+    return { emailed: true }
+  } catch (err) {
+    console.error('Couldn’t email a team invitation:', err.message)
+    return { emailed: false, emailError: 'The email couldn’t be sent.' }
+  }
+}
 
 // DELETE /api/teams/:id/invites/:inviteId - revoke an invite link
 app.delete('/api/teams/:id/invites/:inviteId', requireValidId(), requireValidId('inviteId'), teamRoute(async (req, res) => {
@@ -3978,11 +4096,7 @@ app.post('/api/presentations/fork', async (req, res) => {
     // New slide and element ids, with links and show/hide following them
     forkedPres.slides = renewSlideIds(forkedPres.slides, uuidv4)
 
-    const { expirationDays } = planFor(req.userPlan)
-    const expiresAt = IS_CLOUD && expirationDays
-      ? new Date(Date.now() + expirationDays * 86400000).toISOString()
-      : null
-    const created = await storage.createPresentation(forkedPres, req.userId, expiresAt)
+    const created = await storage.createPresentation(forkedPres, req.userId)
     // Its files go with it when it's deleted
     if (storedKeys.length) await storage.query('UPDATE uploads SET presentation_id = $1 WHERE storage_key = ANY($2)', [created.id, storedKeys])
 
@@ -4198,16 +4312,9 @@ function attachLiveEditing(server) {
   collab?.attach(server)
 }
 
-// Periodic cleanup: hard-delete free-tier presentations expired > 7 days,
-// along with their R2 files
+// Periodic cleanup. (Presentations no longer expire: past a plan's limit
+// they're read-only, services/deck-locks.js.)
 if (IS_CLOUD) {
-  setInterval(async () => {
-    try {
-      const deleted = await sweepExpiredPresentations(storage)
-      if (deleted > 0) console.log(`Cleanup: deleted ${deleted} expired presentations`)
-    } catch (err) { console.error('Cleanup error:', err.message) }
-  }, 60 * 60 * 1000)
-
   // Guest sessions: closed tabs (after a short grace period) and idle
   // sessions. Skipped while none exist, so the database can go idle.
   let sweepingGuests = false

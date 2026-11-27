@@ -29,7 +29,12 @@ vi.mock('../utils/api', () => ({
     createPresentation: vi.fn(async data => ({ id: 'new', title: data.title || 'Untitled' })),
   }, { get: (api, name) => api[name] ?? (api[name] = vi.fn(async () => null)) }),
 }))
-vi.mock('@clerk/clerk-react', () => ({ UserButton: () => null }))
+vi.mock('@clerk/clerk-react', () => {
+  const UserButton = () => null
+  UserButton.MenuItems = () => null
+  UserButton.Action = () => null
+  return { UserButton }
+})
 import { api } from '../utils/api'
 import HomePage from './HomePage'
 

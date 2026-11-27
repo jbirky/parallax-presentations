@@ -181,7 +181,7 @@ export default function PracticeDemo() {
             {lastRun ? (<>
               <span>Last practice <b>{clock(runTotal)}</b>. {changed.length ? 'Planned minutes now follow it. Practice again to try the new plan.' : 'Plan from this run sets each slide’s minutes to its time, to the half minute.'}</span>
               {!changed.length && <button type="button" className="lp-btn ghost" onClick={planFromRun}>Plan from this run</button>}
-            </>) : <span>Each slide’s planned minutes. After a run, its time shows beside them, amber when it ran over.</span>}
+            </>) : <span>Each slide’s planned minutes. After a run, its time shows beside them, red when it ran over.</span>}
           </div>
         </aside>
       </div>

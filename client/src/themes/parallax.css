@@ -1,0 +1,370 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Parallax theme's stylesheet: the look of Parallax's own site. Ink
+   (#0c0c0d) on paper (#fafaf7), with the red (#ee2b2b) and blue (#1e60ff)
+   of 3D glasses, which the mark and the site use as the two eyes' offset
+   copies of a thing. Headings in Archivo at its heaviest, text in Inter
+   (utils/themes.js: the fonts and the text sizes, which the Themes panel's
+   Text tab can change).
+
+   It's scoped to .deck-theme-parallax, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Content slides are paper: their titles under the mark's three bars (red,
+   ink, blue), italic words in a heading drawn in stereo instead, as red
+   and blue fringes. The title slide and section slides are ink, with a red
+   edge down the left and a blue one down the right, as the site's framed
+   deck has them; the title slide's heading is all in stereo, beside the
+   mark at its largest. A Heading 4 is an eyebrow in spaced capitals after
+   the bars; a Heading 6 a small red tag. Bullets are blue squares;
+   numbered lists count 01, 02 in red. Inline code is an ink chip; code
+   blocks are ink. A quote is a card with the two eyes' offset copies
+   behind it, its bold first words a label. Tables have an ink header row.
+   The Big Number is in stereo. The footer is spaced capitals, its page
+   number after the bars; with its sections in sequence, done ones are ink,
+   the current one red with a rule, those to come pale. */
+
+/* reveal.js: links blue, the arrows and the progress bar in ink */
+.deck-theme-parallax {
+  --r-background-color: #fafaf7;
+  --r-main-color: #2e2e31;
+  --r-heading-color: #0c0c0d;
+  --r-link-color: #1a56e8;
+  --r-link-color-dark: #0b3fcc;
+  --r-link-color-hover: #0c0c0d;
+  --r-selection-background-color: #cfdcff;
+  --r-selection-color: #0c0c0d;
+  --pr-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='14 14 72 72' width='72' height='72'%3E%3Cdefs%3E%3CclipPath id='c'%3E%3Cpath d='M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z' transform='translate(-6 0)' clip-rule='evenodd'/%3E%3C/clipPath%3E%3C/defs%3E%3Cg transform='translate(-2 0)' fill-rule='evenodd'%3E%3Cpath d='M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z' transform='translate(-6 0)' fill='%23ee2b2b'/%3E%3Cpath d='M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z' transform='translate(6 0)' fill='%231e60ff'/%3E%3Cg clip-path='url(%23c)'%3E%3Cpath d='M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z' transform='translate(6 0)' fill='%23fafaf7'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* The inks; on a slide with a background of its own, its text color. On
+   the ink slides (title, section) the paper and ink trade places. */
+.deck-theme-parallax.px-slide,
+.deck-theme-parallax .px-slide { --pr-ink: #0c0c0d; --pr-text: #2e2e31; --pr-muted: #66666a; --pr-pale: #bdbdb6; --pr-rule: #d9d9d3; --pr-red: #ee2b2b; --pr-red-text: #c81e1e; --pr-blue: #1e60ff; --pr-blue-text: #1a56e8; --pr-card: #ffffff; }
+.deck-theme-parallax.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]),
+.deck-theme-parallax .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) { --pr-ink: #fafaf7; --pr-text: #c4c4c2; --pr-muted: #9c9c9a; --pr-pale: #4a4a4e; --pr-rule: rgba(250, 250, 247, 0.16); --pr-red-text: #ff8a80; --pr-blue-text: #8db0ff; --pr-card: #18181a; }
+.deck-theme-parallax.px-slide[data-own-background],
+.deck-theme-parallax .px-slide[data-own-background] { --pr-ink: var(--px-text); --pr-text: var(--px-text); --pr-muted: var(--px-text); --pr-pale: var(--px-text); --pr-rule: var(--px-text); --pr-red-text: var(--px-text); --pr-blue-text: var(--px-text); --pr-card: transparent; }
+
+/* Headings: Archivo at its heaviest, tight. (!important: presented decks
+   set headings' spacing, and take their shadows away, with it.) Italic
+   words in them are in stereo. */
+.deck-theme-parallax .px-text :is(h1, h2, h3) { letter-spacing: -0.03em !important; line-height: 1.04; }
+.deck-theme-parallax .px-text :is(h1, h2, h3) em { font-style: normal; text-shadow: -0.045em 0 var(--pr-red), 0.045em 0 var(--pr-blue); }
+
+/* Content slides' titles, under the mark's three bars; or the bars before
+   an eyebrow (a Heading 4) over the title. Not on the title slide, section
+   slides, Big Numbers or blank ones. */
+.deck-theme-parallax.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):first-child::before,
+.deck-theme-parallax .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):first-child::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 10px;
+  margin-bottom: 14px;
+  background: linear-gradient(90deg, var(--pr-red) 0 7px, var(--pr-ink) 7px 25px, var(--pr-blue) 25px);
+}
+.deck-theme-parallax .px-text h1[style*=center]:first-child::before,
+.deck-theme-parallax .px-text h2[style*=center]:first-child::before { margin-inline: auto; }
+
+/* The ink slides: the title slide and section slides, with the red and
+   blue edges of the site's framed deck */
+.deck-theme-parallax.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before,
+.deck-theme-parallax .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, #ee2b2b 0 14px, transparent 14px calc(100% - 14px), #1e60ff calc(100% - 14px)),
+    #0c0c0d;
+}
+.deck-theme-parallax.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(h1, h2, h3, h4, h5),
+.deck-theme-parallax .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(h1, h2, h3, h4, h5) { color: #fafaf7 !important; }
+.deck-theme-parallax.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(p, li, td),
+.deck-theme-parallax .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(p, li, td) { color: #c4c4c2 !important; }
+
+/* The title slide: the heading at the left, all in stereo, the mark at its
+   largest at the right, and the subtitle's lines after the first in spaced
+   capitals (their widths in percent, so text that shrinks to fit still
+   gets its room) */
+.deck-theme-parallax.px-slide[data-layout=title]:not([data-own-background])::after,
+.deck-theme-parallax .px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  right: 76px;
+  top: 50%;
+  width: 220px;
+  height: 220px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  background: var(--pr-mark) center / contain no-repeat;
+}
+.deck-theme-parallax.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2),
+.deck-theme-parallax .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2) { letter-spacing: -0.035em !important; line-height: 0.98; }
+.deck-theme-parallax.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-parallax .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 64%;
+  text-align: left !important;
+  text-shadow: -0.04em 0 #ee2b2b, 0.04em 0 #1e60ff !important;
+}
+.deck-theme-parallax.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-parallax .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 10px;
+  margin-bottom: 22px;
+  background: linear-gradient(90deg, #ee2b2b 0 7px, #fafaf7 7px 25px, #1e60ff 25px);
+}
+.deck-theme-parallax.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-parallax .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 64%; text-align: left !important; }
+.deck-theme-parallax.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-parallax .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { margin-top: 0.5em !important; font-size: 0.55em; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+
+/* Section slides: the heading in stereo, the bars over it */
+.deck-theme-parallax.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-parallax .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) { text-shadow: -0.04em 0 #ee2b2b, 0.04em 0 #1e60ff !important; }
+.deck-theme-parallax.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-parallax .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 10px;
+  margin: 0 auto 22px;
+  background: linear-gradient(90deg, #ee2b2b 0 7px, #fafaf7 7px 25px, #1e60ff 25px);
+}
+.deck-theme-parallax.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)[style*=left]::before,
+.deck-theme-parallax .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2)[style*=left]::before { margin-left: 0; }
+
+/* Subtitles: muted */
+.deck-theme-parallax [data-placeholder=subtitle] :is(p, li) { color: var(--pr-muted) !important; }
+
+/* A Heading 4: an eyebrow in spaced capitals, after the three bars */
+.deck-theme-parallax .px-text h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  margin: 0 0 0.55em !important;
+  color: var(--pr-ink) !important;
+  font-family: Inter, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.5em;
+  font-weight: 600 !important;
+  letter-spacing: 0.16em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-parallax .px-text h4::before { content: ""; flex: none; width: 2.5em; height: 0.8em; background: linear-gradient(90deg, var(--pr-red) 0 22%, var(--pr-ink) 22% 78%, var(--pr-blue) 78%); }
+.deck-theme-parallax .px-text h4[style*=center] { justify-content: center; }
+.deck-theme-parallax .px-text h4 + :is(h1, h2)::before { display: none !important; }
+
+/* A Heading 6: a small red tag in capitals, as the site marks what's new */
+.deck-theme-parallax .px-text h6 {
+  margin: 0.2em 0 0.3em !important;
+  color: var(--pr-red-text) !important;
+  font-family: Inter, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.48em;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+
+/* Bullets: blue squares, then open ones, then a red dash. Numbered lists
+   count 01, 02 in red, in Archivo. */
+.deck-theme-parallax .px-text :is(ul, ol) { display: block; }
+.deck-theme-parallax .px-text ul { list-style: none; }
+.deck-theme-parallax .px-text ul > li { position: relative; }
+.deck-theme-parallax .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9em;
+  top: 0.48em;
+  width: 0.32em;
+  height: 0.32em;
+  box-sizing: border-box;
+  background: var(--pr-blue);
+}
+.deck-theme-parallax .px-text ul ul > li::before { background: transparent; border: 0.07em solid var(--pr-blue); }
+.deck-theme-parallax .px-text ul ul ul > li::before { top: 0.66em; width: 0.42em; height: 0; border: 0; border-top: 0.08em solid var(--pr-red); }
+.deck-theme-parallax .px-text ol { list-style: none; padding-left: 1.7em; }
+.deck-theme-parallax .px-text ol > li { position: relative; list-style: none; }
+.deck-theme-parallax .px-text ol > li::before {
+  content: counter(list-item, decimal-leading-zero);
+  position: absolute;
+  left: -2.1em;
+  top: 0.18em;
+  color: var(--pr-red-text);
+  font-family: Archivo, Inter, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.7em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Links: blue */
+.deck-theme-parallax .px-text a { color: var(--pr-blue-text) !important; text-decoration-thickness: 0.06em; text-underline-offset: 0.16em; }
+
+/* Inline code: an ink chip */
+.deck-theme-parallax .px-text :not(pre) > code {
+  padding: 0.06em 0.4em 0.1em;
+  border-radius: 0;
+  background: var(--pr-ink) !important;
+  color: var(--pr-card);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78em;
+  font-weight: 500;
+}
+.deck-theme-parallax.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-parallax .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; color: var(--px-text); outline: 0.06em solid var(--px-text); }
+
+/* Quotes: a card under an ink rule, with the two eyes' offset copies, red
+   and blue, behind it; bold first words are its label */
+.deck-theme-parallax .px-text blockquote {
+  margin: 0.5em 0.4em 0.6em !important;
+  padding: 0.7em 0.9em 0.75em !important;
+  border: 0 !important;
+  border-top: 0.16em solid var(--pr-ink) !important;
+  border-radius: 0 !important;
+  background: var(--pr-card) !important;
+  box-shadow: -0.32em 0 0 var(--pr-red), 0.32em 0 0 var(--pr-blue) !important;
+  opacity: 1 !important;
+  color: var(--pr-ink);
+  font-style: normal;
+}
+.deck-theme-parallax .px-text blockquote :is(p, li) { color: var(--pr-ink) !important; line-height: 1.4; }
+.deck-theme-parallax .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.35em;
+  color: var(--pr-red-text);
+  font-family: Inter, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.56em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.deck-theme-parallax .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-parallax.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-parallax .px-slide[data-own-background] .px-text blockquote { box-shadow: none !important; border: 0.07em solid var(--px-text) !important; }
+
+/* Code: ink, as the site's code panels are, in its own colors whichever
+   code theme the deck uses */
+.deck-theme-parallax :is(pre, pre.hljs) {
+  background: #0c0c0d !important;
+  color: #dcdcd6;
+  border: 0;
+  border-top: 4px solid #1e60ff;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-parallax :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-parallax pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-parallax .px-text pre { padding: 0.6em 0.8em !important; font-size: 0.6em; line-height: 1.55; }
+.deck-theme-parallax pre [class*=hljs-] { color: #dcdcd6; font-style: normal; font-weight: 400; }
+.deck-theme-parallax pre :is(.hljs-comment, .hljs-quote) { color: #8e8e8a; font-style: italic; }
+.deck-theme-parallax pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #ff8a80; }
+.deck-theme-parallax pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #8db0ff; }
+.deck-theme-parallax pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #ffd27a; }
+.deck-theme-parallax pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-title.function_, .hljs-attr) { color: #fafaf7; font-weight: 600; }
+.deck-theme-parallax pre :is(.hljs-meta, .hljs-deletion) { color: #8e8e8a; }
+
+/* Tables: the header row in ink, rows ruled, tabular figures */
+.deck-theme-parallax table { border: 0 !important; border-collapse: collapse; background: var(--pr-card); }
+.deck-theme-parallax table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--pr-rule) !important;
+  background: transparent !important;
+  color: var(--pr-text) !important;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-parallax table tr:first-child :is(td, th) {
+  border-bottom: 0 !important;
+  background: #0c0c0d !important;
+  color: #fafaf7 !important;
+  font-size: 0.76em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-theme-parallax table tr:not(:first-child) :is(td, th):first-child { color: var(--pr-ink) !important; font-weight: 600; }
+.deck-theme-parallax.px-slide[data-own-background] table,
+.deck-theme-parallax .px-slide[data-own-background] table { background: transparent; }
+.deck-theme-parallax.px-slide[data-own-background] table :is(td, th),
+.deck-theme-parallax .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; background: transparent !important; border-color: var(--px-text) !important; }
+
+/* The Big Number: Archivo at its heaviest, in stereo, its unit (inline
+   code or italic words in it) in gray */
+.deck-theme-parallax.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-parallax .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--px-heading, #0c0c0d) !important;
+  font-weight: 800;
+  letter-spacing: -0.045em !important;
+  line-height: 1;
+  text-shadow: -0.035em 0 var(--pr-red), 0.035em 0 var(--pr-blue) !important;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.deck-theme-parallax.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-parallax .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  margin-left: 0.1em;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: var(--pr-muted);
+  font-family: inherit !important;
+  font-size: 0.4em;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: none;
+}
+
+/* The footer: spaced capitals, the page number after the three bars. With
+   its sections in sequence: done ones in ink, the current one red with a
+   rule under it, those to come pale. (The class and the slide both named,
+   to outweigh the presented deck's footer rules.) */
+.deck-theme-parallax.px-slide .px-footer,
+.deck-theme-parallax .px-slide .px-footer { padding-inline: 24px !important; color: var(--pr-muted) !important; }
+.deck-theme-parallax.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-parallax .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--pr-muted) !important;
+  font-family: Inter, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-parallax.px-slide .px-footer .px-footer-page,
+.deck-theme-parallax .px-slide .px-footer .px-footer-page { display: inline-flex; align-items: center; gap: 8px; color: var(--pr-ink) !important; font-weight: 700 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-parallax.px-slide .px-footer .px-footer-page::before,
+.deck-theme-parallax .px-slide .px-footer .px-footer-page::before { content: ""; flex: none; width: 22px; height: 7px; background: linear-gradient(90deg, var(--pr-red) 0 5px, var(--pr-ink) 5px 17px, var(--pr-blue) 17px); }
+.deck-theme-parallax.px-slide .px-footer .px-footer-sections,
+.deck-theme-parallax .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 18px; }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section,
+.deck-theme-parallax .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 2px; color: var(--pr-pale) !important; }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section::before,
+.deck-theme-parallax .px-slide .px-footer .px-footer-section::before { content: ""; flex: none; width: 7px; height: 7px; background: var(--pr-pale); }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-parallax .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--pr-ink) !important; }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section[data-state=past]::before,
+.deck-theme-parallax .px-slide .px-footer .px-footer-section[data-state=past]::before { background: var(--pr-ink); }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-parallax .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--pr-red-text) !important; background: linear-gradient(var(--pr-red), var(--pr-red)) 0 100% / 100% 2px no-repeat; }
+.deck-theme-parallax.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-parallax .px-slide .px-footer .px-footer-section[data-state=current]::before { background: var(--pr-red); }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the three bars under the title */
+.deck-theme-parallax .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 8px;
+  margin: 5px auto 0;
+  background: linear-gradient(90deg, #ee2b2b 0 7px, #0c0c0d 7px 25px, #1e60ff 25px);
+}

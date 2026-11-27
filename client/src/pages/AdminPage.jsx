@@ -5,11 +5,13 @@
 // the server container's CPU and memory. The server answers only for admins.
 
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Sun, Moon } from 'lucide-react'
 import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
 import PluginReviewPanel from '../components/PluginReviewPanel'
 import AdminTeamsPanel from '../components/AdminTeamsPanel'
+import ParallaxMark from '../components/ParallaxMark'
+import * as ui from '../components/adminStyles'
 import { formatSize, planSummary, priceText } from '../utils/plans'
 
 const REFRESH_MS = 60 * 1000
@@ -71,25 +73,24 @@ function hourlyRows(samples, key) {
 
 const styles = {
   // The app's body doesn't scroll (the editor needs that), so this page does
-  page: { height: '100%', overflowY: 'auto', background: 'var(--bg-primary)', color: 'var(--text-primary)' },
-  wrap: { maxWidth: 1120, margin: '0 auto', paddingInline: 16, paddingBlock: '20px 64px', display: 'grid', gap: 20 },
-  panel: { background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, minWidth: 0 },
-  h2: { margin: '0 0 2px', fontSize: 14, fontWeight: 600 },
-  sub: { margin: '0 0 12px', fontSize: 12, color: 'var(--text-muted)' },
+  page: { height: '100%', overflowY: 'auto' },
+  wrap: { maxWidth: 1180, margin: '0 auto', paddingInline: 'clamp(16px, 3vw, 40px)', paddingBlock: '0 72px', display: 'grid', gap: 24 },
+  panel: ui.panel,
+  h2: ui.h2,
+  h3: ui.h3,
+  sub: ui.sub,
   muted: { color: 'var(--text-muted)' },
-  th: { textAlign: 'left', fontWeight: 500, fontSize: 12, color: 'var(--text-muted)', padding: '8px 10px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' },
-  td: { padding: '9px 10px', borderBottom: '1px solid var(--border)', fontSize: 13, verticalAlign: 'top' },
+  th: ui.th,
+  td: ui.td,
   num: { fontVariantNumeric: 'tabular-nums', textAlign: 'right', whiteSpace: 'nowrap' },
-  details: { marginTop: 10, fontSize: 12, color: 'var(--text-secondary)' },
-  tabs: { display: 'flex', gap: 2, borderBottom: '1px solid var(--border)', overflowX: 'auto', scrollbarWidth: 'thin' },
-  tab: { background: 'none', border: 'none', borderBottom: '2px solid transparent', marginBottom: -1, padding: '8px 12px', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
+  details: { marginTop: 12, fontSize: 12, color: 'var(--text-secondary)' },
 }
 
 function Stat({ label, value, note, first, children }) {
   return (
     <div style={{ flex: '1 1 170px', padding: '4px 16px', borderLeft: first ? 'none' : '1px solid var(--border)', minWidth: 0 }}>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.3 }}>{value}</div>
+      <div style={{ ...ui.h3, margin: 0, color: 'var(--text-muted)' }}>{label}</div>
+      <div style={{ fontFamily: 'var(--hp-display)', fontSize: 34, fontWeight: 600, lineHeight: 1.25, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {note && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{note}</div>}
       {children}
     </div>
@@ -138,9 +139,8 @@ const planName = (plans, id) => plans.find(p => p.id === id)?.name || id
 export function planChangeSummary(user, from, to) {
   const lines = [`Move ${user.name || user.email} from ${from?.name || user.plan} to ${to.name}?`,
     `Storage limit: ${formatSize(to.storageBytes)}.`]
-  if (from?.expirationDays && !to.expirationDays) lines.push('Their presentations will stop expiring.')
-  if (!from?.expirationDays && to.expirationDays) {
-    lines.push(`Their existing presentations are kept; new ones will expire after ${to.expirationDays} days.`)
+  if (to.maxPresentations != null && (from?.maxPresentations == null || to.maxPresentations < from.maxPresentations)) {
+    lines.push(`They can edit their ${to.maxPresentations} newest presentation${to.maxPresentations === 1 ? '' : 's'}; older ones become read-only.`)
   }
   if (user.hasSubscription) lines.push('They pay through Stripe, so a billing change can switch this back.')
   return lines.join('\n\n')
@@ -159,9 +159,8 @@ function PlanPicker({ user, plans, onChanged }) {
     setMoving(plan)
     setMessage(null)
     try {
-      const { unexpired } = await api.setUserPlan(user.id, plan)
-      setMessage(`Moved to ${to.name}.` +
-        (unexpired ? ` ${unexpired} presentation${unexpired === 1 ? '' : 's'} no longer expire${unexpired === 1 ? 's' : ''}.` : ''))
+      await api.setUserPlan(user.id, plan)
+      setMessage(`Moved to ${to.name}.`)
       await onChanged?.()
     } catch (err) {
       setMessage(`Couldn’t change the plan: ${err.message}`)
@@ -185,7 +184,7 @@ function PlanPicker({ user, plans, onChanged }) {
 // ── Plan editor ──
 
 const EMPTY_PLAN = {
-  id: '', name: '', storageBytes: GB, maxPresentations: null, expirationDays: null, maxFileBytes: null,
+  id: '', name: '', storageBytes: GB, maxPresentations: null, maxFileBytes: null,
   stripePriceId: null, priceLabel: null, public: false, sortOrder: 10, liveDatasets: 0, minRefresh: 'daily',
 }
 
@@ -198,7 +197,6 @@ export function toPlanForm(plan) {
     storage: String(inGB ? plan.storageBytes / GB : Math.round(plan.storageBytes / MB * 10) / 10),
     storageUnit: inGB ? 'GB' : 'MB',
     maxPresentations: plan.maxPresentations == null ? '' : String(plan.maxPresentations),
-    expirationDays: plan.expirationDays == null ? '' : String(plan.expirationDays),
     maxFileMB: plan.maxFileBytes == null ? '' : String(Math.round(plan.maxFileBytes / MB * 10) / 10),
     stripePriceId: plan.stripePriceId || '',
     priceLabel: plan.priceLabel || '',
@@ -219,7 +217,6 @@ export function fromPlanForm(form) {
     name: form.name,
     storageBytes: bytes(form.storage, form.storageUnit === 'GB' ? GB : MB),
     maxPresentations: form.maxPresentations.trim() === '' ? null : Number(form.maxPresentations),
-    expirationDays: form.expirationDays.trim() === '' ? null : Number(form.expirationDays),
     maxFileBytes: bytes(form.maxFileMB, MB),
     stripePriceId: form.stripePriceId.trim() || null,
     priceLabel: form.priceLabel.trim() || null,
@@ -235,19 +232,11 @@ export function fromPlanForm(form) {
 // What saving `next` over `old` does to the `accounts` already on it, for the confirm
 export function planEditEffects(old, next, accounts) {
   const effects = []
-  if (old.expirationDays && !next.expirationDays) {
-    effects.push(!accounts ? 'Presentations will stop expiring.'
-      : `Presentations of ${accounts === 1 ? 'the account' : `the ${accounts} accounts`} on it will stop expiring.`)
-  } else if (!old.expirationDays && next.expirationDays) {
-    effects.push(`Only presentations made from now on will expire, after ${next.expirationDays} days; existing ones won’t.`)
-  } else if (old.expirationDays !== next.expirationDays) {
-    effects.push(`The new expiry applies to presentations made from now on; existing ones keep their dates.`)
-  }
   if (accounts && next.storageBytes < old.storageBytes) {
     effects.push(`Accounts on it storing more than ${formatSize(next.storageBytes)} can’t upload until they free space.`)
   }
   if (accounts && next.maxPresentations != null && (old.maxPresentations == null || next.maxPresentations < old.maxPresentations)) {
-    effects.push(`Accounts on it with more than ${next.maxPresentations} presentations keep them but can’t make more.`)
+    effects.push(`Accounts on it with more than ${next.maxPresentations} presentations can edit only their ${next.maxPresentations} newest; older ones become read-only.`)
   }
   if (old.stripePriceId && old.stripePriceId !== next.stripePriceId) {
     effects.push('Existing subscribers stay on the old price in Stripe; renewals on it will no longer match a plan until you move them.')
@@ -256,8 +245,8 @@ export function planEditEffects(old, next, accounts) {
 }
 
 const fieldLabel = { display: 'grid', gap: 3, fontSize: 12, color: 'var(--text-muted)' }
-const fieldInput = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '6px 8px', borderRadius: 6, fontSize: 13, minWidth: 0, width: '100%', boxSizing: 'border-box' }
-const chip = { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)' }
+const fieldInput = { ...ui.input, minWidth: 0, width: '100%', boxSizing: 'border-box' }
+const chip = ui.chip
 
 function Field({ label, hint, children }) {
   return (
@@ -286,8 +275,8 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
     setSaving(true)
     setError(null)
     try {
-      const { unexpired } = await api.savePlan(next, isNew)
-      await onDone?.(unexpired ? `Saved. ${unexpired} presentation${unexpired === 1 ? '' : 's'} stopped expiring.` : 'Saved.')
+      await api.savePlan(next, isNew)
+      await onDone?.('Saved.')
     } catch (err) {
       setError(err.message)
       setSaving(false)
@@ -311,11 +300,8 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
             </select>
           </div>
         </Field>
-        <Field label="Presentations" hint="blank: unlimited">
+        <Field label="Editable presentations" hint="their newest; older ones read-only. Blank: unlimited">
           <input style={fieldInput} type="number" min="1" step="1" value={form.maxPresentations} onChange={set('maxPresentations')} />
-        </Field>
-        <Field label="Expires after (days)" hint="blank: never">
-          <input style={fieldInput} type="number" min="1" step="1" value={form.expirationDays} onChange={set('expirationDays')} />
         </Field>
         <Field label="Largest file (MB)" hint="blank: 500">
           <input style={fieldInput} type="number" min="1" max="500" step="any" value={form.maxFileMB} onChange={set('maxFileMB')} />
@@ -350,7 +336,7 @@ function PlanForm({ plan, isNew, accounts, onDone }) {
           <input type="checkbox" checked={form.perSeat} onChange={set('perSeat')} /> Sold to teams, by the seat
         </label>
       )}
-      {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, ...ui.error }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding: '5px 12px', fontSize: 13 }}>
           {saving ? 'Saving…' : isNew ? 'Add plan' : 'Save'}
@@ -411,7 +397,7 @@ function PlanPrices({ plan, onChanged }) {
         <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setForm({ priceId: '', interval: 'month', amount: '' })}
           style={{ justifySelf: 'start', padding: '2px 8px', fontSize: 12 }}>Add a price</button>
       )}
-      {error && <div role="alert" style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      {error && <div role="alert" style={{ fontSize: 12, ...ui.error }}>{error}</div>}
     </div>
   )
 }
@@ -435,9 +421,9 @@ function PlanCard({ plan, accounts, onChanged }) {
   }
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 8, alignContent: 'start', minWidth: 0 }}>
+    <div className="admin-plan-card" style={{ ...ui.card, alignContent: 'start' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
-        <strong style={{ fontSize: 14 }}>{plan.name}</strong>
+        <strong style={{ fontFamily: 'var(--hp-display)', fontSize: 16, fontWeight: 600 }}>{plan.name}</strong>
         <code style={{ fontSize: 11, color: 'var(--text-muted)' }}>{plan.id}</code>
         <span style={chip}>{plan.id === 'guest' ? 'Guest mode' : plan.public ? 'Listed' : 'Hidden'}</span>
         {plan.id !== 'guest' && (
@@ -494,7 +480,7 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
       </div>
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
         {adding && (
-          <div style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12 }}>
+          <div style={{ border: '1.5px dashed var(--border-light)', padding: 12 }}>
             <PlanForm plan={EMPTY_PLAN} isNew accounts={0} onDone={async done => {
               if (done) await onChanged?.()
               setAdding(false)
@@ -503,7 +489,62 @@ function PlansPanel({ plans, byPlan, billingEnabled, onChanged }) {
         )}
         {plans.map(p => <PlanCard key={p.id} plan={p} accounts={byPlan?.[p.id] || 0} onChanged={onChanged} />)}
       </div>
+      <EducationDomains />
     </section>
+  )
+}
+
+// The education price's schools: domains beyond those known by their ending
+// (.edu, .edu.au, .ac.uk, .k12.wa.us), and whether the coupon is set up
+// (STRIPE_EDUCATION_COUPON, server/services/education.js)
+export function EducationDomains() {
+  const [data, setData] = useState(null)
+  const [domain, setDomain] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const load = () => api.getEducationDomains().then(setData, err => setError(err.message))
+  useEffect(() => { load() }, [])
+  const add = async e => {
+    e.preventDefault()
+    setError('')
+    try {
+      await api.addEducationDomain(domain, note)
+      setDomain('')
+      setNote('')
+      await load()
+    } catch (err) { setError(err.message) }
+  }
+  const drop = async d => {
+    if (!confirm(`Stop counting ${d} as a school?`)) return
+    try { await api.dropEducationDomain(d); await load() } catch (err) { setError(err.message) }
+  }
+  const coupon = data?.coupon
+  return (
+    <div className="edu-domains">
+      <h3 style={{ ...styles.h3, margin: '22px 0 4px' }}>Education price</h3>
+      <p style={styles.sub}>
+        {!coupon
+          ? 'No coupon is set (STRIPE_EDUCATION_COUPON), so checkout takes only promotion codes.'
+          : coupon.percentOff != null || coupon.amountOffCents != null
+            ? `Coupon ${coupon.id}: ${coupon.percentOff != null ? `${coupon.percentOff}%` : `$${(coupon.amountOffCents / 100).toFixed(2)}`} off, for accounts with a verified school email.`
+            : `Coupon ${coupon.id} is set, but Stripe doesn’t know it (or billing is off).`}
+        {' '}Emails ending in .edu, .edu.xx, .ac.xx or .k12.xx.us count already; add other schools’ domains here.
+      </p>
+      {error && <p role="alert" style={{ ...ui.error, fontSize: 12 }}>{error}</p>}
+      <ul className="edu-domain-list">
+        {(data?.domains || []).map(d => (
+          <li key={d.domain}>
+            <span>{d.domain}</span>{d.note && <span className="edu-domain-note"> · {d.note}</span>}
+            <button type="button" className="btn-icon" onClick={() => drop(d.domain)} aria-label={`Stop counting ${d.domain}`} title="Stop counting it">×</button>
+          </li>
+        ))}
+      </ul>
+      <form onSubmit={add} style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <input style={{ ...fieldInput, flex: '1 1 180px', width: 'auto' }} value={domain} onChange={e => setDomain(e.target.value)} placeholder="ethz.ch" aria-label="School domain" required />
+        <input style={{ ...fieldInput, flex: '2 1 220px', width: 'auto' }} value={note} onChange={e => setNote(e.target.value)} placeholder="ETH Zürich (optional)" aria-label="Note" />
+        <button className="btn btn-secondary" type="submit" style={{ padding: '5px 12px', fontSize: 12 }}>Add</button>
+      </form>
+    </div>
   )
 }
 
@@ -529,8 +570,8 @@ function FunnelStep({ label, count, of, note }) {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '2px 10px', alignItems: 'baseline' }}>
       <div style={{ fontSize: 13 }}>{label}{note && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> · {note}</span>}</div>
       <div style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>{count == null ? '—' : count.toLocaleString()} <span style={{ color: 'var(--text-muted)' }}>{count == null ? '' : percent(count, of)}</span></div>
-      <div style={{ gridColumn: '1 / -1', height: 6, borderRadius: 3, background: 'var(--bg-hover)' }}>
-        <div style={{ width: `${share * 100}%`, height: '100%', borderRadius: 3, background: 'var(--accent)' }} />
+      <div style={{ gridColumn: '1 / -1', height: 6, background: 'var(--bg-hover)' }}>
+        <div style={{ width: `${share * 100}%`, height: '100%', background: 'var(--accent)' }} />
       </div>
     </div>
   )
@@ -539,7 +580,7 @@ function FunnelStep({ label, count, of, note }) {
 function TopList({ title, rows, name = x => x }) {
   return (
     <div style={{ minWidth: 0 }}>
-      <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>{title}</h3>
+      <h3 style={styles.h3}>{title}</h3>
       {rows.length ? <SimpleTable columns={['', 'Count']} rows={rows.map(r => [name(r.name), r.count.toLocaleString()])} />
         : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>None yet</p>}
     </div>
@@ -567,10 +608,10 @@ export function LandingStatsPanel() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {data?.configured && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{data.activeNow} visitor{data.activeNow === 1 ? '' : 's'} now</span>}
-        <div role="group" aria-label="Period" style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+        <div role="group" aria-label="Period" style={{ display: 'flex', border: '1.5px solid var(--hp-edge)' }}>
           {PERIODS.map(d => (
             <button key={d} type="button" aria-pressed={days === d} onClick={() => setDays(d)}
-              style={{ padding: '3px 9px', fontSize: 12, borderRadius: 4, background: days === d ? 'var(--bg-active)' : 'transparent', color: days === d ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, border: 0, cursor: 'pointer', background: days === d ? 'var(--text-primary)' : 'transparent', color: days === d ? 'var(--bg-primary)' : 'var(--text-secondary)' }}>
               {d} days
             </button>
           ))}
@@ -603,18 +644,18 @@ export function LandingStatsPanel() {
       </div>
       <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
         <div style={{ minWidth: 0 }}>
-          <h3 style={{ ...styles.h2, fontSize: 13, marginBottom: 6 }}>Visits per day</h3>
+          <h3 style={styles.h3}>Visits per day</h3>
           <ColumnChart data={daily} integer ariaLabel={`Visits to the landing page per day, last ${days} days`} />
         </div>
         <div style={{ display: 'grid', gap: 10, alignContent: 'start', minWidth: 0 }}>
-          <h3 style={{ ...styles.h2, fontSize: 13 }}>From visit to account</h3>
+          <h3 style={{ ...styles.h3, margin: 0 }}>From visit to account</h3>
           <FunnelStep label="Visitors" count={totals.visitors} of={totals.visitors} />
           <FunnelStep label="Clicked Try it or Sign in" count={clicks} of={totals.visitors} note="clicks" />
           <FunnelStep label="Started a guest session" count={events['guest-start'] || 0} of={totals.visitors} />
           <FunnelStep label="Made an account" count={data.accounts?.signups ?? null} of={totals.visitors} note="from anywhere" />
         </div>
       </div>
-      <h3 style={{ ...styles.h2, fontSize: 13, margin: '18px 0 6px' }}>Examples</h3>
+      <h3 style={{ ...styles.h3, margin: '22px 0 8px' }}>Examples</h3>
       {data.examples.length
         ? <SimpleTable columns={['Example', 'Opened', 'Open in the editor', 'Guest sessions']} rows={data.examples.map(e => [e.title, e.opened, e.toEditor, e.guestStarts].map(v => (typeof v === 'number' ? v.toLocaleString() : v)))} />
         : <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>No example opened yet</p>}
@@ -681,7 +722,7 @@ function AddExample({ kind, fields, onAdded, onCancel }) {
     }
   }
   return (
-    <form onSubmit={add} style={{ border: '1px dashed var(--border)', borderRadius: 8, padding: 12, display: 'grid', gap: 10 }}>
+    <form onSubmit={add} style={{ border: '1.5px dashed var(--border-light)', padding: 12, display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <Field label="Presentation" hint="its slides are copied as they are now">
           <select className="select-sm" value={presentationId} onChange={choose} required disabled={!presentations}>
@@ -691,7 +732,7 @@ function AddExample({ kind, fields, onAdded, onCancel }) {
         </Field>
       </div>
       <ExampleFields form={form} set={set} fields={fields} />
-      {error && <div style={{ fontSize: 12, color: '#ef4444' }}>{error}</div>}
+      {error && <div style={{ fontSize: 12, ...ui.error }}>{error}</div>}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="submit" className="btn btn-primary" disabled={saving || !presentationId} style={{ padding: '5px 12px', fontSize: 13 }}>{saving ? 'Adding…' : form.kind === 'template' ? 'Add template' : 'Add example'}</button>
         <button type="button" className="btn btn-secondary" disabled={saving} onClick={onCancel} style={{ padding: '5px 12px', fontSize: 13 }}>Cancel</button>
@@ -713,14 +754,14 @@ function ExampleRow({ example: e, first, last, fields, busy, onAct, onMove }) {
   }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '160px minmax(0, 1fr)', gap: 14, padding: '12px 0', borderTop: first ? 'none' : '1px solid var(--border)', opacity: e.card || e.hero ? 1 : 0.65 }}>
-      <a href={`/examples/${e.slug}/deck`} target="_blank" rel="noopener noreferrer" title="Open the live deck" style={{ display: 'block', aspectRatio: '16 / 9', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', background: background(e.background) }}>
+      <a href={`/examples/${e.slug}/deck`} target="_blank" rel="noopener noreferrer" title="Open the live deck" style={{ display: 'block', aspectRatio: '16 / 9', overflow: 'hidden', border: '1px solid var(--border)', background: background(e.background) }}>
         {thumb
           ? <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <span style={{ display: 'grid', placeItems: 'center', height: '100%', padding: 8, fontSize: 11, color: '#fff', textAlign: 'center' }}>{e.title}</span>}
       </a>
       <div style={{ display: 'grid', gap: 6, alignContent: 'start', minWidth: 0 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 6 }}>
-          <strong style={{ fontSize: 14 }}>{e.title}</strong>
+          <strong style={{ fontFamily: 'var(--hp-display)', fontSize: 16, fontWeight: 600 }}>{e.title}</strong>
           {e.field && <span style={chip}>{e.field}</span>}
           {e.hero && <span style={{ ...chip, background: 'var(--accent)', color: '#fff' }}>At the top</span>}
           {!e.card && !e.hero && <span style={chip}>Hidden</span>}
@@ -911,12 +952,12 @@ function SimpleTable({ columns, rows, numbersFrom = 1 }) {
 // Same thresholds and colors as the storage meter on the dashboard
 function StorageMeter({ used, limit }) {
   const ratio = limit ? used / limit : 0
-  const color = ratio > 0.9 ? '#ef4444' : ratio > 0.7 ? '#f59e0b' : 'var(--accent)'
+  const color = ratio > 0.9 ? 'var(--hp-red)' : ratio > 0.7 ? 'var(--hp-tag)' : 'var(--accent)'
   const status = ratio >= 1 ? 'Over limit' : ratio > 0.9 ? 'Almost full' : ratio > 0.7 ? 'Near limit' : null
   return (
     <div style={{ display: 'grid', gap: 4, minWidth: 150 }}>
-      <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${Math.min(100, ratio * 100)}%`, background: color, borderRadius: 3 }} />
+      <div style={{ height: 6, background: 'var(--border)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, ratio * 100)}%`, background: color }} />
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
         {formatBytes(used)} of {formatBytes(limit)}{status && <strong style={{ color: 'var(--text-primary)', fontWeight: 600 }}> · {status}</strong>}
@@ -937,11 +978,82 @@ export function adminTabs(data) {
     cloud && { id: 'teams', label: 'Teams' },
     cloud && { id: 'plans', label: 'Plans' },
     cloud && { id: 'analytics', label: 'Analytics' },
+    cloud && { id: 'answers', label: 'Sign-up answers' },
     cloud && { id: 'examples', label: 'Examples' },
     cloud && { id: 'templates', label: 'Templates' },
     { id: 'plugins', label: 'Plugins' },
     { id: 'server', label: 'Server' },
   ].filter(Boolean)
+}
+
+// The answers to the optional sign-up questions (server/services/signup-survey.js):
+// each question's choices counted, the "something else" answers, and every
+// answer as a CSV file
+export function SurveyAnswersPanel() {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => { api.getSurveySummary().then(setData, err => setError(err.message)) }, [])
+  const download = async () => {
+    try {
+      const url = URL.createObjectURL(await api.getSurveyCsv())
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `parallax-signup-answers-${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) { setError(err.message) }
+  }
+  return (
+    <section style={styles.panel} className="survey-answers">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={styles.h2}>Sign-up answers</h2>
+          <p style={styles.sub}>
+            {data
+              ? `${data.answered} account${data.answered === 1 ? '' : 's'} answered · ${data.skipped} skipped. Everyone is asked once on the dashboard; every question is optional.`
+              : 'The optional questions accounts are asked once on the dashboard.'}
+          </p>
+        </div>
+        {data?.answered > 0 && <button className="btn btn-secondary" onClick={download} style={{ padding: '5px 12px', fontSize: 12 }}>Download CSV</button>}
+      </div>
+      {error && <p role="alert" style={{ ...ui.error, fontSize: 12 }}>{error}</p>}
+      {data && data.answered === 0 && <p style={styles.sub}>No answers yet.</p>}
+      {data && data.answered > 0 && (
+        <div className="survey-answers-grid">
+          {data.questions.map(q => {
+            const most = Math.max(1, ...q.counts.map(c => c.n))
+            return (
+              <div key={q.id} className="survey-answers-question">
+                <h3>{q.label}</h3>
+                <p className="survey-answers-sub">{q.answered} answered{q.kind === 'many' ? ' · they could pick several' : ''}</p>
+                <table>
+                  <tbody>
+                    {[...q.counts].sort((a, b) => b.n - a.n).map(c => (
+                      <tr key={c.id}>
+                        <td>{c.label}</td>
+                        <td className="survey-answers-bar"><span style={{ width: `${(c.n / most) * 100}%` }} /></td>
+                        <td className="survey-answers-n">{c.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {data?.others?.length > 0 && (
+        <>
+          <h3 style={{ ...styles.h3, margin: '22px 0 8px' }}>In their own words</h3>
+          <ul className="survey-answers-others">
+            {data.others.map((o, i) => <li key={i}><span>{o.question}</span> {o.text}</li>)}
+          </ul>
+        </>
+      )}
+    </section>
+  )
 }
 
 // The tab row; arrow keys, Home and End move between tabs
@@ -955,13 +1067,12 @@ export function AdminTabs({ tabs, active, onChange }) {
     document.getElementById(`admin-tab-${tab.id}`)?.focus()
   }
   return (
-    <div role="tablist" aria-label="Admin sections" style={styles.tabs}>
+    <div role="tablist" aria-label="Admin sections" className="admin-tabs">
       {tabs.map((t, i) => {
         const on = t.id === active
         return (
           <button key={t.id} id={`admin-tab-${t.id}`} role="tab" type="button" aria-selected={on} aria-controls={`admin-panel-${t.id}`}
-            tabIndex={on ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={e => move(e, i)}
-            style={{ ...styles.tab, color: on ? 'var(--text-primary)' : 'var(--text-muted)', borderBottomColor: on ? 'var(--accent)' : 'transparent', fontWeight: on ? 600 : 500 }}>
+            tabIndex={on ? 0 : -1} onClick={() => onChange(t.id)} onKeyDown={e => move(e, i)} className="admin-tab">
             {t.label}
           </button>
         )
@@ -988,7 +1099,7 @@ export function AdminDashboard({ data, tab = 'overview', refreshing = false, onG
   const shown = adminTabs(data).some(t => t.id === tab) ? tab : 'overview'
   const panels = {
     overview: <>
-      <section style={{ ...styles.panel, display: 'flex', flexWrap: 'wrap', rowGap: 14, padding: '14px 0' }}>
+      <section style={{ ...styles.panel, display: 'flex', flexWrap: 'wrap', rowGap: 18, padding: '22px 4px 16px' }}>
         <Stat first label="Accounts" value={data.accounts.total.toLocaleString()}
           note={plans.length ? plans.map(([plan, n]) => `${n} ${plan}`).join(' · ') : 'None yet'} />
         <Stat label="New accounts" value={data.accounts.new30d.toLocaleString()} note={`Last 30 days · ${data.accounts.new7d} in the last 7`} />
@@ -1031,12 +1142,12 @@ export function AdminDashboard({ data, tab = 'overview', refreshing = false, onG
               {data.users.map(u => (
                 <tr key={u.id}>
                   <td style={styles.td}>
-                    <div style={{ fontWeight: 500 }}>{u.name || u.email}</div>
+                    <div style={{ fontWeight: 600 }}>{u.name || u.email}</div>
                     {u.name && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{u.email}</div>}
                   </td>
                   <td style={styles.td}>
                     {data.plans?.length ? <PlanPicker user={u} plans={data.plans} onChanged={onPlanChanged} /> : (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--bg-hover)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{u.plan}</span>
+                      <span style={chip}>{u.plan}</span>
                     )}
                   </td>
                   <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>{formatDay(u.createdAt)}</td>
@@ -1058,6 +1169,7 @@ export function AdminDashboard({ data, tab = 'overview', refreshing = false, onG
     </>,
     teams: <AdminTeamsPanel />,
     plans: <PlansPanel plans={data.plans} byPlan={data.accounts.byPlan} billingEnabled={data.billingEnabled} onChanged={onPlanChanged} />,
+    answers: <SurveyAnswersPanel />,
     analytics: <LandingStatsPanel />,
     examples: <ExamplesPanel kind="example" />,
     templates: <ExamplesPanel kind="template" />,
@@ -1111,7 +1223,7 @@ export function AdminDashboard({ data, tab = 'overview', refreshing = false, onG
 // The tab in the address (/admin#teams), so a reload or a link opens it
 const tabFromHash = () => window.location.hash.replace(/^#/, '') || 'overview'
 
-export default function AdminPage() {
+export default function AdminPage({ theme, onToggleTheme }) {
   const [data, setData] = useState(undefined) // undefined: loading, null: not an admin
   const [tab, setTab] = useState(tabFromHash)
   const pickTab = id => {
@@ -1140,13 +1252,13 @@ export default function AdminPage() {
   }, [load])
 
   if (data === undefined && !error) {
-    return <div style={{ ...styles.page, display: 'grid', placeItems: 'center' }}><p style={styles.muted}>Loading…</p></div>
+    return <div className="admin-page" style={{ ...styles.page, display: 'grid', placeItems: 'center' }}><p style={styles.muted}>Loading…</p></div>
   }
   if (data === null) {
     return (
-      <div style={{ ...styles.page, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+      <div className="admin-page" style={{ ...styles.page, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
         <div>
-          <p style={{ fontSize: 18, fontWeight: 600, margin: '0 0 6px' }}>Page not found</p>
+          <p style={{ ...styles.h2, fontSize: 28, margin: '0 0 8px' }}>Page not found</p>
           <a href="/dashboard" style={{ color: 'var(--accent)' }}>Go to your dashboard</a>
         </div>
       </div>
@@ -1154,25 +1266,28 @@ export default function AdminPage() {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.wrap}>
-        <header style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-            <a href="/dashboard" className="btn btn-secondary" style={{ textDecoration: 'none', padding: '6px 10px' }}>
-              <ArrowLeft size={15} /> Dashboard
-            </a>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Admin</h1>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{window.location.host}</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--text-muted)' }}>
-            {data && <span>Updated {formatClock(data.generatedAt)}</span>}
-            <button className="btn btn-secondary" onClick={load} disabled={refreshing} style={{ padding: '6px 10px' }}>
-              <RefreshCw size={14} /> {refreshing ? 'Refreshing…' : 'Refresh'}
+    <div className="admin-page" style={styles.page}>
+      <header className="admin-header">
+        <a href="/dashboard" className="admin-logo" title="Your dashboard"><ParallaxMark id="admin" size={28} ink="var(--text-primary)" /><span>Parallax</span></a>
+        <div className="admin-header-tools">
+          {data && <span>Updated {formatClock(data.generatedAt)}</span>}
+          <button className="btn btn-secondary" onClick={load} disabled={refreshing}>
+            <RefreshCw size={14} /> {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+          {onToggleTheme && (
+            <button className="btn btn-secondary" onClick={onToggleTheme} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
             </button>
-          </div>
-        </header>
+          )}
+          <a href="/dashboard" className="btn btn-primary"><ArrowLeft size={15} /> Dashboard</a>
+        </div>
+      </header>
+      <div style={styles.wrap}>
+        <div className="admin-intro">
+          <div className="admin-eyebrow">{window.location.host}</div>
+          <h1>Admin</h1>
+        </div>
 
         {error && (
           <p style={{ ...styles.panel, margin: 0, color: 'var(--text-primary)' }}>

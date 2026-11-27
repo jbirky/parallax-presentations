@@ -37,6 +37,35 @@ describe('the landing page', () => {
     expect(el.querySelector('.lp-support a').getAttribute('href')).toBe('mailto:support@parallax-presentations.com')
   })
 
+  it('moves the title’s last words’ red and blue copies with the pointer', async () => {
+    await mount()
+    const words = el.querySelector('.lp-hero h1 .lp-parallax')
+    expect(words.textContent).toBe('complex concepts.')
+    expect(el.querySelector('.lp-hero h1').textContent).toBe('Create interactiveand intuitive slides\u00a0forcomplex concepts.')
+    await act(async () => {
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 400, clientY: 300, pointerType: 'mouse' }))
+      await new Promise(r => setTimeout(r, 100))
+    })
+    expect(Number(words.style.getPropertyValue('--px'))).toBeGreaterThan(0)
+    expect(Number(words.style.getPropertyValue('--py'))).toBeGreaterThan(0)
+    // The section and closing titles' fringed words move too
+    const moving = [...el.querySelectorAll('.lp-parallax')]
+    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'Make your next talk in Parallax'])
+    for (const w of moving) expect(w.style.getPropertyValue('--px')).not.toBe('')
+    // And the closing mark's red and blue P's (the clip path's red P too), the red twice as far
+    const eyes = [...el.querySelectorAll('.lp-cta-mark [data-eye]')]
+    expect(eyes.map(p => p.dataset.eye)).toEqual(['red', 'red', 'blue', 'blue'])
+    const shift = p => p.getAttribute('transform').match(/translate\((\S+) (\S+)\)/).slice(1).map(Number)
+    const [[rx, ry], [bx, by]] = [shift(eyes[0]), shift(eyes[2])]
+    expect(rx).toBeLessThan(-6)
+    expect(ry).toBeLessThan(0)
+    expect(bx).toBeLessThan(6)
+    expect(-6 - rx).toBeCloseTo(2 * (6 - bx), 1)
+    expect(shift(eyes[1])).toEqual([rx, ry])
+    // The nav and footer marks hold still
+    expect(el.querySelector('.lp-nav [data-eye="red"]').getAttribute('transform')).toBe('translate(-6 0)')
+  })
+
   it('shows the examples by field', async () => {
     await mount()
     expect([...el.querySelectorAll('a.lp-card')].map(a => a.getAttribute('href'))).toEqual(EXAMPLES.map(e => `/examples/${e.slug}`))
@@ -46,6 +75,18 @@ describe('the landing page', () => {
     expect(button('Physics').getAttribute('aria-pressed')).toBe('true')
     await act(async () => button('All').click())
     expect(cards()).toHaveLength(EXAMPLES.length)
+  })
+
+  // The site's own pages link to the home tab's sections (services/site-pages.js)
+  it('scrolls to a section an address names', async () => {
+    const seen = []
+    const was = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function () { seen.push(this.id) }
+    try {
+      window.location.hash = '#workflow'
+      await mount()
+      expect(seen).toEqual(['workflow'])
+    } finally { Element.prototype.scrollIntoView = was }
   })
 
   it('opens an example live, steps to the next, and into the editor with it', async () => {
@@ -231,6 +272,22 @@ describe('what sets Parallax apart', () => {
     expect(el.querySelector('#workflow').textContent).not.toMatch(/DOI|Zenodo/)
   })
 
+  it('shows the plans and what they cost, marking what isn’t built yet', async () => {
+    const onSignIn = vi.fn()
+    await mount({ onSignIn })
+    const plans = [...el.querySelectorAll('.lp-plan')]
+    expect(plans.map(p => p.querySelector('h3').textContent)).toEqual(['Free', 'Pro', 'Team', 'Institution'])
+    expect(plans.map(p => p.querySelector('.lp-price').textContent)).toEqual(['$0', '$10', '$12', 'Custom'])
+    expect(plans[1].classList.contains('lead')).toBe(true)
+    const soon = plans.map(p => [...p.querySelectorAll('li')].filter(li => li.querySelector('.lp-soon')).map(li => li.textContent.replace('Coming soon', '').trim()))
+    expect(soon).toEqual([['Public links with a small badge'], ['No badge, password links, view counts'], [], ['Single sign-on, domain capture', 'Audit log']])
+    await act(async () => plans[1].querySelector('button').click())
+    expect(onSignIn).toHaveBeenCalledTimes(1)
+    expect(track).toHaveBeenCalledWith('sign-in', { from: 'plan-pro' })
+    expect(plans[3].querySelector('a.lp-btn').getAttribute('href')).toMatch(/^mailto:support@parallax-presentations\.com\?subject=/)
+    expect(el.querySelector('.lp-selfhost a').getAttribute('href')).toBe('#docs/guide/installation')
+  })
+
   it('compares Parallax with the tools people use', async () => {
     await mount()
     const heads = [...el.querySelectorAll('.lp-compare thead th')].map(th => th.textContent)
@@ -270,7 +327,7 @@ describe('Practice Talk to try', () => {
     expect(rows[3][3]).toBe('skipped')
     expect(rows[1][4]).toMatch(/^\+0:\d\d$/)
     expect(el.querySelector('.lp-pr-sum .over, .lp-pr-sum .under')).not.toBeNull()
-    // The outline shows each slide's time, amber where it ran over
+    // The outline shows each slide's time, red where it ran over
     const outline = () => [...el.querySelectorAll('.lp-pr-outline li')].map(li => [li.querySelector('.m').textContent, li.querySelector('.pt').textContent, li.querySelector('.pt').className])
     expect(outline()[1][2]).toContain('over')
     expect(outline()[4][1]).toBe('')

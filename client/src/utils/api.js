@@ -282,7 +282,8 @@ export const api = {
   getInvite: (token) => authFetch(`${BASE}/invites/${token}`).then(r => checked(r, 'Failed')),
   acceptInvite: (token) => authFetch(`${BASE}/invites/${token}/accept`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   // Teams (cloud only). An invite's days is 7, 30 or 90, or null for never;
-  // createTeamInvite resolves to { token, invite }, the only time the token is shown.
+  // createTeamInvite resolves to { token, invite, emailed?, emailError? }, the only time the token is shown;
+  // for an email address, emailed says whether the invitation went there
   listTeams: () => authFetch(`${BASE}/teams`).then(r => checked(r, 'Could not load your teams')),
   getTeam: (id) => authFetch(`${BASE}/teams/${id}`).then(r => checked(r, 'Could not load the team')),
   renameTeam: (id, name) => authFetch(`${BASE}/teams/${id}`, json('PATCH', { name })).then(r => checked(r, 'Could not rename the team')),
@@ -378,6 +379,19 @@ export const api = {
     return b
   }),
   createPortal: () => authFetch(`${BASE}/billing/portal`, { method: 'POST' }).then(safeJson),
+  // The optional sign-up questions (server/services/signup-survey.js):
+  // { questions, answers }, and saving answers
+  getSurvey: () => authFetch(`${BASE}/me/survey`).then(r => checked(r, 'Could not load the questions')),
+  saveSurvey: (answers) => authFetch(`${BASE}/me/survey`, json('PUT', answers)).then(r => checked(r, 'Could not save your answers')),
+  // Admins: the answers totaled, and every answer as a CSV file (a Blob)
+  getSurveySummary: () => authFetch(`${BASE}/admin/survey`).then(r => checked(r, 'Could not load the answers')),
+  getSurveyCsv: () => authFetch(`${BASE}/admin/survey.csv`).then(async r => { if (!r.ok) throw new Error('Could not download the answers'); return r.blob() }),
+  // The education price's school domains (admins): { domains, coupon }
+  getEducationDomains: () => authFetch(`${BASE}/admin/education-domains`).then(r => checked(r, 'Could not load the school domains')),
+  addEducationDomain: (domain, note) => authFetch(`${BASE}/admin/education-domains`, json('POST', { domain, note })).then(r => checked(r, 'Could not add the domain')),
+  dropEducationDomain: (domain) => authFetch(`${BASE}/admin/education-domains/${encodeURIComponent(domain)}`, { method: 'DELETE' }).then(r => checked(r, 'Could not take the domain off')),
+  // What checkout takes off: { promotionCodes, education: { percentOff, …, eligible, domain } | null }
+  getBillingDiscounts: () => authFetch(`${BASE}/billing/discounts`).then(r => checked(r, 'Could not load discounts')),
   getBillingStatus: () => authFetch(`${BASE}/billing/status`).then(safeJson),
   cancelSubscription: () => authFetch(`${BASE}/billing/cancel`, { method: 'POST' }).then(safeJson),
   resumeSubscription: () => authFetch(`${BASE}/billing/resume`, { method: 'POST' }).then(safeJson),

@@ -7,8 +7,10 @@
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
 // together with Practice Talk to try (PracticeDemo.jsx), the elements by
-// subject, and the plans. It's dark unless light is chosen, with the nav's
-// toggle or the dashboard's (theme, onToggleTheme; utils/theme.js). The docs
+// subject, the plans, and a last way in. Ink and paper bands, the mark's red
+// and blue as offset shadows (index.css, Landing Page). It's dark unless
+// light is chosen, with the nav's toggle or the dashboard's (theme,
+// onToggleTheme; utils/theme.js). The docs
 // open in place of it, at #docs, and the
 // templates at #templates: each opens its own page (/templates/<slug>, which
 // the server builds, server/services/site-pages.js), where people copy it
@@ -20,6 +22,8 @@ import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
+import Mark from '../components/ParallaxMark'
+import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import PracticeDemo from '../components/landing/PracticeDemo'
@@ -55,6 +59,9 @@ const COMPARISON = [
 ]
 const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
+// The home tab's sections an address can name, as in /#examples
+const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'start']
+
 // The built-in examples, as the server lists them
 const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
 // The filters: the usual fields first, then any others the examples have
@@ -64,8 +71,43 @@ const fieldsOf = examples => {
 }
 const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 'gradient' && bg.gradient) || '#1e1e2e'
 
-const HOSTED = ['3 presentations', '100 MB of storage', 'Presentations kept for 30 days', 'Share links and live presenting', 'Share and edit with collaborators', 'AI collaboration']
-const SELF_HOSTED = ['Runs on your server with Docker', 'No account needed', 'Your decks stay on your machine', 'Desktop apps for macOS, Windows and Linux']
+// The plans and what they cost (the pricing plan; their limits are the
+// plans table's, server/services/plans.js, which /admin edits, so change
+// both together). An item marked `soon` isn't built yet and says so. Pro is
+// the lead card, in ink.
+const PLANS = [
+  {
+    id: 'free', name: 'Free', price: '$0', note: 'For trying it, and for good', cta: 'Start free',
+    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['Public links with a small badge', 'soon']],
+  },
+  {
+    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Go Pro',
+    note: 'a month, or $8 billed yearly. Students and educators: $5, or $4 yearly',
+    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['No badge, password links, view counts', 'soon']],
+  },
+  {
+    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Set up a team',
+    items: [['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Team themes, fonts, data and templates']],
+  },
+  {
+    id: 'institution', name: 'Institution', price: 'Custom', note: 'An annual department or campus license', cta: 'Talk to us',
+    href: `mailto:${SUPPORT}?subject=${encodeURIComponent('Parallax for an institution')}`,
+    items: [['Single sign-on, domain capture', 'soon'], ['Audit log', 'soon'], ['Invoices and purchase orders'], ['Custom storage and data'], ['Support agreement']],
+  },
+]
+
+// Words whose red and blue copies sit at two depths behind the ink, so they
+// shift against the pointer (usePointerDepth): the red, farthest back, most,
+// the blue less, the ink not at all. The offsets are CSS (.lp-parallax).
+const setDepthVars = (el, x, y) => {
+  el.style.setProperty('--px', x.toFixed(3))
+  el.style.setProperty('--py', y.toFixed(3))
+}
+export function ParallaxWords({ children }) {
+  const ref = useRef(null)
+  usePointerDepth(ref, setDepthVars)
+  return <em ref={ref} className="lp-parallax">{children}</em>
+}
 
 // An example, live, with what it shows and a way into the editor
 function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }) {
@@ -152,6 +194,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         setTab('templates')
       } else {
         setTab('home')
+        // A section named in the address (the site's own pages link to them,
+        // services/site-pages.js), once the examples above it are in
+        if (HOME_SECTIONS.includes(h.slice(1))) setScrollTo({ id: h.slice(1), afterCatalog: true })
       }
     }
     read()
@@ -169,17 +214,17 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     setScrollTo({ id })
   }
   useEffect(() => {
-    if (!scrollTo || tab !== 'home') return
+    if (!scrollTo || tab !== 'home' || (scrollTo.afterCatalog && !catalog)) return
     document.getElementById(scrollTo.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-  }, [scrollTo, tab])
+  }, [scrollTo, tab, catalog])
 
   const examples = catalog?.examples || []
   const shown = field === 'All' ? examples : examples.filter(e => e.field === field)
   const templates = catalog?.templates || []
   const templatesShown = templateField === 'All' ? templates : templates.filter(e => e.field === templateField)
-  const tryIt = guestEnabled
-    ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from: 'hero' })}>Try it, no account needed <ArrowRight size={16} /></a>
-    : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'hero' }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
+  const tryIt = from => guestEnabled
+    ? <a className="lp-btn primary" href="/try" onClick={() => track('try', { from })}>Try it, no account needed <ArrowRight size={16} /></a>
+    : <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from }); onSignIn() }}>Get started free <ArrowRight size={16} /></button>
 
   const copySupport = async () => {
     track('support', { how: 'copy' })
@@ -190,7 +235,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     <div className="landing-page">
       <nav className="lp-nav" aria-label="Main">
         <div className="lp-wrap lp-nav-row">
-          <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
+          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="nav" size={32} /><span className="lp-word">Parallax</span><BetaBadge /></button>
           <div className="lp-links">
             <button type="button" className="lp-wide" onClick={() => goTo('features')}>Features</button>
             {/* On a phone, Templates takes its place; the hero's See the examples leads there */}
@@ -218,7 +263,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
         ) : tab === 'templates' ? (
-          <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
+          <section className="lp-band lp-light alt lp-templates" id="templates" aria-labelledby="lp-templates">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-templates">Templates</h2>
@@ -259,15 +304,15 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         ) : (<>
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
-            <h1>Create interactive and intuitive slides <em>for complex concepts.</em></h1>
+            <h1>Create interactive<br />and intuitive slides&nbsp;for<br /><ParallaxWords>complex concepts.</ParallaxWords></h1>
             <div className="lp-ctas">
-              {tryIt}
+              {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
             </div>
-            <div className="lp-chips" aria-label="What sets Parallax apart">
+            <div className="lp-chips" role="group" aria-label="What sets Parallax apart">
               {FEATURES.map(f => (
                 <button key={f.key} type="button" onClick={() => { track('feature', { feature: f.key, from: 'hero' }); setFeature(f.key); goTo('features') }}>
-                  <i aria-hidden="true" />{f.name}
+                  {f.name}{f.isNew && <span className="lp-new">New</span>}
                 </button>
               ))}
             </div>
@@ -276,22 +321,22 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
               <div className="lp-frame">
                 {catalog?.hero ? <SlideFrame src={`/examples/${catalog.hero}/deck`} title="A live Parallax deck" /> : <div className="lp-slide" />}
               </div>
-              <div className="lp-hint"><i aria-hidden="true">●</i> Live deck: drag a slider, then click and press →</div>
+              <div className="lp-hint"><i aria-hidden="true" />Live deck: drag a slider, then click and press →</div>
             </div>
           </header>
 
-          <section className="lp-band alt" id="features" aria-labelledby="lp-features">
+          <section className="lp-band lp-light" id="features" aria-labelledby="lp-features">
             <div className="lp-wrap">
-              <div className="lp-head">
+              <div className="lp-head lp-head-line">
                 <div className="lp-label">What sets it apart</div>
-                <h2 id="lp-features">Slides that work like <em>your research</em></h2>
+                <h2 id="lp-features">Slides that work like <ParallaxWords>your research</ParallaxWords></h2>
                 <p>Your data, your references and your code are part of the talk, not pasted into it. Each of these is in Parallax today.</p>
               </div>
               <FeatureShowcase feature={feature} onFeature={setFeature} guestEnabled={guestEnabled} />
             </div>
           </section>
 
-          <section className="lp-band" id="examples" aria-labelledby="lp-examples">
+          <section className="lp-band lp-light alt" id="examples" aria-labelledby="lp-examples">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-examples">Examples</h2>
@@ -329,11 +374,11 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band alt" id="compare" aria-labelledby="lp-compare">
+          <section className="lp-band" id="compare" aria-labelledby="lp-compare">
             <div className="lp-wrap">
               <div className="lp-head lp-head-wide">
                 <div className="lp-label">Where it fits</div>
-                <h2 id="lp-compare">A visual editor that knows <em>LaTeX, BibTeX and git</em></h2>
+                <h2 id="lp-compare">A visual editor that knows <ParallaxWords>LaTeX, BibTeX and git</ParallaxWords></h2>
                 <p>Parallax keeps what researchers like about the tools they already use, in one place.</p>
               </div>
               <div className="lp-compare">
@@ -348,7 +393,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band" id="workflow" aria-labelledby="lp-workflow">
+          <section className="lp-band lp-light" id="workflow" aria-labelledby="lp-workflow">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-workflow">From outline to talk</h2>
@@ -361,29 +406,50 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
-          <section className="lp-band alt" id="start" aria-labelledby="lp-start">
+          <section className="lp-band lp-light alt" id="start" aria-labelledby="lp-start">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-start">Start free, or run it yourself</h2>
                 <p>Use Parallax here, or install it on your own server. It’s the same open-source editor either way.</p>
               </div>
               <div className="lp-plans">
-                <div className="lp-plan lead">
-                  <div className="lp-label">Hosted</div>
-                  <div className="lp-price">Free <small>to start</small></div>
-                  <ul>{HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
-                  <div className="lp-plan-row">
-                    <button type="button" className="lp-btn primary" onClick={() => { track('sign-in', { from: 'plans' }); onSignIn() }}>Start free</button>
-                    {guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
+                {PLANS.map(plan => (
+                  <div key={plan.id} className={plan.lead ? 'lp-plan lead' : 'lp-plan'}>
+                    <h3>{plan.name}</h3>
+                    <div className="lp-price">{plan.price}</div>
+                    <p className="lp-price-note">{plan.note}</p>
+                    <ul>{plan.items.map(([text, soon]) => <li key={text}><span>{text}{soon && <> <span className="lp-soon">Coming soon</span></>}</span></li>)}</ul>
+                    <div className="lp-plan-row">
+                      {plan.href
+                        ? <a className="lp-btn ghost" href={plan.href} onClick={() => track('contact', { from: `plan-${plan.id}` })}>{plan.cta}</a>
+                        : <button type="button" className={plan.lead ? 'lp-btn primary' : 'lp-btn ghost'} onClick={() => { track('sign-in', { from: `plan-${plan.id}` }); onSignIn() }}>{plan.cta}</button>}
+                      {plan.id === 'free' && guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
+                    </div>
                   </div>
+                ))}
+              </div>
+              <div className="lp-selfhost">
+                <div>
+                  <div className="lp-label">Self-hosted · free and unlimited</div>
+                  <p>Runs on your server with Docker, with no account needed and your decks on your own machine. Desktop apps for macOS, Windows and Linux.</p>
                 </div>
-                <div className="lp-plan">
-                  <div className="lp-label">Self-hosted</div>
-                  <div className="lp-price">Free <small>and unlimited</small></div>
-                  <ul>{SELF_HOSTED.map(x => <li key={x}>{x}</li>)}</ul>
-                  <div className="lp-plan-row"><a className="lp-btn ghost" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a></div>
+                <a className="lp-btn primary" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a>
+              </div>
+            </div>
+          </section>
+
+          <section className="lp-band lp-cta" aria-labelledby="lp-cta">
+            <div className="lp-wrap lp-cta-row">
+              <div className="lp-cta-text">
+                <div className="lp-eyebrow">Try it</div>
+                <h2 id="lp-cta"><ParallaxWords>Make your next talk in Parallax</ParallaxWords></h2>
+                <p>Free to start, no card needed.</p>
+                <div className="lp-ctas">
+                  {tryIt('cta')}
+                  {guestEnabled && <button type="button" className="lp-btn ghost" onClick={() => { track('sign-in', { from: 'cta' }); onSignIn() }}>Sign in</button>}
                 </div>
               </div>
+              <Mark id="cta" className="lp-cta-mark" moving />
             </div>
           </section>
 
@@ -391,7 +457,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-footer-cols">
                 <div>
-                  <button type="button" className="lp-logo" onClick={() => goTo('top')}><span className="lp-p">P</span>arallax<BetaBadge /></button>
+                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="footer" size={30} /><span className="lp-word">Parallax</span><BetaBadge /></button>
                   <p>Parallax is in beta, so features may change. Tell us what breaks and what you’d like next.</p>
                 </div>
                 <div><h4>Product</h4><ul>

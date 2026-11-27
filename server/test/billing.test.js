@@ -20,7 +20,14 @@ function fakeStripe() {
     price_proYearly1: { recurring: { interval: 'year' }, unit_amount: 9600, currency: 'usd' },
     price_oneOff1: { recurring: null, unit_amount: 500, currency: 'usd' },
   }
+  const COUPONS = { coupon_edu50: { id: 'coupon_edu50', percent_off: 50, amount_off: null, duration: 'forever', valid: true } }
   fake.client = {
+    coupons: {
+      retrieve: async id => {
+        if (!COUPONS[id]) throw Object.assign(new Error('No such coupon'), { statusCode: 404 })
+        return COUPONS[id]
+      },
+    },
     customers: { create: async args => { record('customers.create', args); return { id: `cus_${++fake.customerCount}` } } },
     checkout: { sessions: { create: async args => { record('checkout', args); return { id: `cs_${fake.calls.length}`, url: 'https://checkout.stripe.test/pay' } } } },
     billingPortal: { sessions: { create: async args => { record('portal', args); return { url: 'https://billing.stripe.test/team' } } } },
@@ -244,5 +251,63 @@ describe('billing', { skip }, () => {
     assert.deepEqual(removed.body.plan.prices.map(p => p.priceId), ['price_teamMonthly1'])
     assert.equal((await call(buyer, 'POST', '/api/teams/checkout', { name: 'Another', seats: 3, priceId: 'price_teamYearly1' })).status, 400)
     assert.equal((await call(siteAdmin, 'DELETE', '/api/admin/plans/team/prices/price_teamYearly1')).status, 404)
+  })
+
+  describe('the education price', () => {
+    const verified = emailAddress => ({ emailAddress, verification: { status: 'verified' } })
+    const school = () => `school${t.run}.ch`
+    before(() => { process.env.STRIPE_EDUCATION_COUPON = 'coupon_edu50' })
+    after(async () => {
+      delete process.env.STRIPE_EDUCATION_COUPON
+      await pool.query('DELETE FROM education_domains WHERE domain = $1', [school()])
+    })
+
+    it('takes the coupon off for a verified school email, and offers promotion codes otherwise', async () => {
+      const student = t.user('student')
+      t.clerkEmails[student] = [verified(`${student}@gmail.com`), verified('kim@cs.uw.edu')]
+      await call(student, 'GET', '/api/me')
+      const offs = (await call(student, 'GET', '/api/billing/discounts')).body
+      assert.equal(offs.promotionCodes, true)
+      assert.equal(offs.education.percentOff, 50)
+      assert.equal(offs.education.eligible, true)
+      assert.equal(offs.education.domain, 'cs.uw.edu')
+      const res = await call(student, 'POST', '/api/billing/checkout', { plan: 'pro', priceId: 'price_proYearly1' })
+      assert.equal(res.status, 200, JSON.stringify(res.body))
+      assert.equal(res.body.education, true)
+      assert.deepEqual(stripe.last('checkout').discounts, [{ coupon: 'coupon_edu50' }])
+      assert.equal(stripe.last('checkout').allow_promotion_codes, undefined)
+
+      // A school address Clerk hasn't verified doesn't count
+      const unsure = t.user('unsure')
+      t.clerkEmails[unsure] = [{ emailAddress: `lee-${t.run}@uw.edu`, verification: { status: 'unverified' } }]
+      await call(unsure, 'GET', '/api/me')
+      assert.equal((await call(unsure, 'GET', '/api/billing/discounts')).body.education.eligible, false)
+      assert.equal((await call(unsure, 'POST', '/api/billing/checkout', { plan: 'pro' })).status, 200)
+      assert.equal(stripe.last('checkout').allow_promotion_codes, true)
+      assert.equal(stripe.last('checkout').discounts, undefined)
+    })
+
+    it('counts the schools an admin adds, by their domain and its subdomains', async () => {
+      const researcher = t.user('researcher')
+      t.clerkEmails[researcher] = [verified(`ana@inf.${school()}`)]
+      await call(researcher, 'GET', '/api/me')
+      assert.equal((await call(researcher, 'GET', '/api/billing/discounts')).body.education.eligible, false)
+
+      assert.equal((await call(researcher, 'POST', '/api/admin/education-domains', { domain: school() })).status, 404)
+      assert.equal((await call(siteAdmin, 'POST', '/api/admin/education-domains', { domain: 'not a domain' })).status, 400)
+      const added = await call(siteAdmin, 'POST', '/api/admin/education-domains', { domain: `@${school().toUpperCase()}`, note: 'A test school' })
+      assert.equal(added.status, 201, JSON.stringify(added.body))
+      assert.equal(added.body.domain.domain, school())
+      const listed = (await call(siteAdmin, 'GET', '/api/admin/education-domains')).body
+      assert.ok(listed.domains.some(d => d.domain === school() && d.note === 'A test school'))
+      assert.deepEqual([listed.coupon.id, listed.coupon.percentOff], ['coupon_edu50', 50])
+
+      const offs = (await call(researcher, 'GET', '/api/billing/discounts')).body
+      assert.equal(offs.education.eligible, true)
+      assert.equal(offs.education.domain, `inf.${school()}`)
+
+      assert.equal((await call(siteAdmin, 'DELETE', `/api/admin/education-domains/${school()}`)).status, 200)
+      assert.equal((await call(researcher, 'GET', '/api/billing/discounts')).body.education.eligible, false)
+    })
   })
 })

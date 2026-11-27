@@ -57,6 +57,7 @@ export default function DeckFontOptions() {
         <option value="'Playfair Display', serif">Playfair Display</option>
         <option value="Merriweather, serif">Merriweather</option>
         <option value="'STIX Two Text', serif">STIX Two Text</option>
+        <option value="'EB Garamond', Georgia, serif">EB Garamond</option>
         <option value="'Computer Modern Serif', serif">Computer Modern</option>
       </optgroup>
       <optgroup label="Monospace">

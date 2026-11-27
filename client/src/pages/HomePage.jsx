@@ -5,18 +5,20 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X, Lock } from 'lucide-react'
 import { api } from '../utils/api'
-import { formatSize, planSummary, priceText } from '../utils/plans'
+import { formatSize, planSummary, priceText, discountedPrice, discountText } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
+import ParallaxMark from '../components/ParallaxMark'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
 import TeamSpaceView from '../components/TeamSpaceView'
 import DeckBrowser from '../components/DeckBrowser'
 import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
 import DeckTile, { tileSlide } from '../components/DeckTile'
+import SignupSurvey from '../components/SignupSurvey'
 import { applyCitationNumbering } from '../utils/citationIndex'
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
 
@@ -60,6 +62,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [form, setForm] = useState({ title: '', theme: 'black', transition: 'slide', templateId: null })
   const [creating, setCreating] = useState(false)
   const [planInfo, setPlanInfo] = useState(null)
+  // The optional sign-up questions, open: 'first' from the note at the top
+  // of the dashboard (shown until they've answered one), 'edit' from "About
+  // you" in the account menu
+  const [survey, setSurvey] = useState(null)
   const [uploads, setUploads] = useState([])
   const [uploadsOpen, setUploadsOpen] = useState(false)
   const [uploadFilter, setUploadFilter] = useState('')
@@ -73,6 +79,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // Back from buying a team (?teamCheckout=done): Stripe tells the server a
   // moment later, so the new team is looked for until it's there
   const [teamSetup, setTeamSetup] = useState(() => (isCloud && new URLSearchParams(window.location.search).get('teamCheckout') === 'done' ? 'waiting' : null))
+  // ?plans=1 (from a read-only presentation's notice) opens the plans
+  useEffect(() => {
+    if (!isCloud || !new URLSearchParams(window.location.search).has('plans')) return
+    window.history.replaceState(null, '', window.location.pathname)
+    openBillingModal()
+  }, [])
+
   useEffect(() => {
     if (!isCloud) return
     const params = new URLSearchParams(window.location.search)
@@ -129,8 +142,23 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     try { window.localStorage.setItem('parallax.deckView', next) } catch {}
   }
 
+  // At their plan's limit, a new presentation of their own makes their oldest
+  // editable one read-only (the server's services/deck-locks.js)
   const atLimit = isCloud && planInfo && planInfo.limits?.maxPresentations != null
     && planInfo.presentationCount >= planInfo.limits.maxPresentations
+  const lockedCount = presentations.filter(p => p.locked && !p.teamId && p.role !== 'editor').length
+
+  // Asks before a new presentation of their own makes an older one read-only
+  function confirmNewOwnDeck() {
+    if (!atLimit) return true
+    const n = planInfo.limits.maxPresentations
+    const editable = presentations
+      .filter(p => !p.teamId && p.role !== 'editor' && !p.locked)
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    const next = editable[n - 1]
+    const which = next ? `“${next.title || 'Untitled'}”` : 'your oldest editable presentation'
+    return window.confirm(`The ${planInfo.planName} plan keeps your ${n} newest presentation${n === 1 ? '' : 's'} editable. Making another makes ${which} read-only: you can still open, present, share and copy it.`)
+  }
 
   const [showForkModal, setShowForkModal] = useState(false)
   const [showBeamerModal, setShowBeamerModal] = useState(false)
@@ -161,6 +189,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
   async function handleFork(folder) {
     if (!forkBrowseResult) return
+    if (!confirmNewOwnDeck()) return
     setForkingFolder(folder)
     setForkError('')
     try {
@@ -210,17 +239,29 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   const [billingStatus, setBillingStatus] = useState(null)
   const [billingLoading, setBillingLoading] = useState(false)
   const [plansForSale, setPlansForSale] = useState([])
+  // What checkout takes off: { promotionCodes, education } (the education
+  // price, with whether their verified email is a school's)
+  const [discounts, setDiscounts] = useState(null)
 
   async function openBillingModal() {
     setShowBillingModal(true)
     setBillingLoading(true)
-    const [status, listed] = await Promise.all([
+    const [status, listed, offs] = await Promise.all([
       api.getBillingStatus().catch(() => null),
       api.getPlans().catch(() => null),
+      api.getBillingDiscounts().catch(() => null),
     ])
     setBillingStatus(status)
     setPlansForSale((listed?.plans || []).filter(p => p.purchasable))
+    setDiscounts(offs)
     setBillingLoading(false)
+  }
+
+  // Saved answers take the dashboard's note away; closing without saving
+  // leaves it
+  function closeSurvey(saved) {
+    setSurvey(null)
+    if (saved) setPlanInfo(p => (p ? { ...p, survey: { pending: false } } : p))
   }
 
   async function handleUpgrade(planId, priceId) {
@@ -297,6 +338,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
   async function handleCreate(e) {
     e.preventDefault()
+    if (!createTarget?.teamId && !confirmNewOwnDeck()) return
     setCreating(true)
     try {
       const pres = await api.createPresentation({ ...form, ...(createTarget || {}) })
@@ -313,6 +355,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
   // A new deck of slides made from LaTeX Beamer (BeamerImportModal)
   async function handleCreateFromBeamer({ title, slides, bibliography, slideWidth, slideHeight, theme }) {
+    if (!currentTarget()?.teamId && !confirmNewOwnDeck()) return
     const deck = applyCitationNumbering({ title, theme, transition: 'slide', slideWidth, slideHeight, slides, bibliography })
     const pres = await api.createPresentation({ ...deck, ...(currentTarget() || {}) })
     setShowBeamerModal(false)
@@ -320,6 +363,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   }
 
   async function handleCreateFromTemplate(templateId) {
+    if (!confirmNewOwnDeck()) return
     setCreating(true)
     try {
       const pres = await api.createPresentation({ templateId })
@@ -334,6 +378,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // reload: for a team's presentation, loads the team's space again
   async function handleDuplicate(e, id, reload) {
     e.stopPropagation()
+    if (presentations.some(p => p.id === id && !p.teamId) && !confirmNewOwnDeck()) return
     try {
       await api.duplicatePresentation(id)
       if (reload) reload()
@@ -422,7 +467,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   function deckActions(pres, { reload } = {}) {
     const inTeam = !!pres.teamId
     const shared = !inTeam && pres.role === 'editor'
-    const viewOnly = pres.role === 'viewer'
+    // A viewer's, or one past the plan's limit (read-only), opens to view
+    const viewOnly = pres.role === 'viewer' || !!pres.locked
     const canDelete = inTeam ? pres.role === 'owner' : !shared
     const move = e => {
       e.stopPropagation()
@@ -453,10 +499,10 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           </button>
         ) : (
           <>
-            {!viewOnly && (
+            {pres.role !== 'viewer' && (
               <button
                 className="btn-icon"
-                title="Duplicate"
+                title={pres.locked ? 'Make an editable copy' : 'Duplicate'}
                 onClick={(e) => handleDuplicate(e, pres.id, reload)}
               >
                 <Copy size={14} />
@@ -495,7 +541,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   }
 
   // A presentation's small preview, for its row in the list
-  const deckThumb = pres => <span className="deck-row-thumb" style={cardBackground(pres)} aria-hidden />
+  const deckThumb = pres => (
+    <span className="deck-row-thumb" style={cardBackground(pres)} aria-hidden>
+      {pres.locked && <Lock size={10} className="deck-row-lock" />}
+    </span>
+  )
 
   // A presentation's card; one shared with this user names its owner, and a
   // team's who made it
@@ -528,14 +578,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
               {pres.creatorName && `By ${pres.creatorName}`}{pres.creatorName && pres.folderName && ' · '}{pres.folderName && `in ${pres.folderName}`}
             </p>
           )}
-          {isCloud && pres.expiresAt && (() => {
-            const days = Math.ceil((new Date(pres.expiresAt) - Date.now()) / 86400000)
-            return (
-              <p style={{ fontSize: 11, color: days <= 7 ? '#ef4444' : '#f59e0b', margin: '2px 0 0' }}>
-                {days <= 0 ? 'Expired' : `Expires in ${days} day${days !== 1 ? 's' : ''}`}
-              </p>
-            )
-          })()}
+          {pres.locked && (
+            <p className="card-locked" title={shared ? 'Past its owner’s plan’s limit: it can be opened and presented, not edited' : 'Past your plan’s limit: it can be opened, presented, shared and copied, not edited. Upgrade, or delete a newer presentation, to edit it.'}>
+              <Lock size={11} /> Read-only
+            </p>
+          )}
         </div>
         <div className="card-actions">{deckActions(pres, { reload })}</div>
       </div>
@@ -590,17 +637,17 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     <div className="home-page">
       <div className="home-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h1><span>P</span>arallax<BetaBadge /></h1>
-          <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+          <h1 className="home-logo"><ParallaxMark id="home" size={28} ink="var(--text-primary)" /><span>Parallax</span><BetaBadge /></h1>
+          <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" className="home-link">
             <ExternalLink size={12} /> Site
           </a>
           {isCloud && (
-            <a href="mailto:support@parallax-presentations.com" title="Email support@parallax-presentations.com" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <a href="mailto:support@parallax-presentations.com" title="Email support@parallax-presentations.com" className="home-link">
               <Mail size={12} /> Support
             </a>
           )}
           {planInfo?.isAdmin && (
-            <a href="/admin" title="Sign-ups, storage and server usage" style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', transition: 'color 0.15s, border-color 0.15s' }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.borderColor = 'var(--text-muted)' }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}>
+            <a href="/admin" title="Sign-ups, storage and server usage" className="home-link">
               <Gauge size={12} /> Admin
             </a>
           )}
@@ -624,7 +671,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           )}
           {!team && (
             <button className="btn btn-secondary" onClick={() => { setShowForkModal(true); setForkUrl(''); setForkBrowseResult(null); setForkError('') }}
-              disabled={atLimit} title={atLimit ? 'Presentation limit reached' : 'Import a presentation from a GitHub repository'}
+              title="Import a presentation from a GitHub repository"
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <GitFork size={15} />
               Fork from Git
@@ -632,32 +679,40 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
           )}
           {(!team || canAddToTeam) && (<>
             <button className="btn btn-secondary" onClick={() => setShowBeamerModal(true)}
-              disabled={!team && atLimit} title={team ? `Make a presentation in ${team.name} from LaTeX Beamer source` : atLimit ? 'Presentation limit reached' : 'Make a presentation from LaTeX Beamer source'}
+              title={team ? `Make a presentation in ${team.name} from LaTeX Beamer source` : 'Make a presentation from LaTeX Beamer source'}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <FileCode size={15} />
               From Beamer
             </button>
-            <button className="btn btn-primary" onClick={() => handleOpenModal()} disabled={!team && atLimit}
-              title={team ? `A new presentation in ${team.name}` : atLimit ? 'Presentation limit reached' : ''}>
+            <button className="btn btn-primary" onClick={() => handleOpenModal()}
+              title={team ? `A new presentation in ${team.name}` : ''}>
               <Plus size={16} />
               New Presentation
             </button>
           </>)}
           {isCloud && (
             <UserButton appearance={{ elements: { avatarBox: { width: 32, height: 32 } } }}>
-              {planInfo?.billing && (
-                <UserButton.MenuItems>
+              <UserButton.MenuItems>
+                {planInfo?.billing && (
                   <UserButton.Action label="Manage subscription" labelIcon={<span style={{ fontSize: 14 }}>&#x2699;</span>} onClick={openBillingModal} />
-                </UserButton.MenuItems>
-              )}
+                )}
+                <UserButton.Action label="About you" labelIcon={<User size={14} />} onClick={() => setSurvey('edit')} />
+              </UserButton.MenuItems>
             </UserButton>
           )}
         </div>
       </div>
 
       <div className="home-content">
+       {/* The sign-up questions, until they've answered one (not for guests or self-hosted) */}
+       {isCloud && planInfo?.survey?.pending && (
+         <div className="survey-banner" role="region" aria-label="About you">
+           <span><strong>Help shape Parallax.</strong> Tell us a little about you: four optional questions, under a minute.</span>
+           <button type="button" className="btn btn-primary" onClick={() => setSurvey('first')}>Answer</button>
+         </div>
+       )}
        {teamSetup && (
-         <div role="status" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+         <div role="status" className="home-note">
            {teamSetup === 'waiting'
              ? 'Thanks! Your team is being set up, and opens here in a few seconds.'
              : 'Your payment went through, but the team isn’t here yet. Reload in a minute; if it still isn’t here, email support@parallax-presentations.com.'}
@@ -688,14 +743,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             onManage={() => setTeamsOpen(team.id)} />
         ) : (<>
         {atLimit && (
-          <div style={{
-            background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)',
-            borderRadius: 8, padding: '10px 16px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)',
-          }}>
-            You've reached the {planInfo.limits.maxPresentations}-presentation limit on the {planInfo.planName} plan.
-            {planInfo.limits.expirationDays && ` Presentations expire after ${planInfo.limits.expirationDays} days.`}
+          <div className="home-note">
+            The {planInfo.planName} plan keeps your {planInfo.limits.maxPresentations} newest presentation{planInfo.limits.maxPresentations === 1 ? '' : 's'} editable.
+            {lockedCount > 0
+              ? ` ${lockedCount} older one${lockedCount === 1 ? ' is' : 's are'} read-only: you can still open, present, share and copy ${lockedCount === 1 ? 'it' : 'them'}.`
+              : ' A new one makes your oldest read-only.'}
             {planInfo.billing && (
-              <button onClick={openBillingModal} style={{ marginLeft: 8, padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <button className="btn btn-primary home-note-btn" onClick={openBillingModal}>
                 See plans
               </button>
             )}
@@ -789,7 +843,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
         {isCloud && planInfo && planInfo.limits?.storageBytes && (
           <div style={{
             marginTop: 40, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-            borderRadius: 10, padding: '12px 16px',
+            padding: '12px 16px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
@@ -801,11 +855,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
               </div>
             </div>
             <div style={{
-              height: 6, borderRadius: 3, background: 'var(--bg-primary)',
+              height: 6, background: 'var(--bg-primary)',
               overflow: 'hidden',
             }}>
               <div style={{
-                height: '100%', borderRadius: 3, transition: 'width 0.3s ease',
+                height: '100%', transition: 'width 0.3s ease',
                 width: `${Math.min(100, (planInfo.storageUsed / planInfo.limits.storageBytes) * 100)}%`,
                 background: (planInfo.storageUsed / planInfo.limits.storageBytes) > 0.9
                   ? '#ef4444'
@@ -837,7 +891,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             {uploadsOpen && (
               <div style={{
                 marginTop: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border)',
-                borderRadius: 10, overflow: 'hidden',
+                overflow: 'hidden',
               }}>
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Search size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -888,12 +942,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                   {isImage ? (
                                     <img src={u.url} alt="" style={{
-                                      width: 36, height: 36, borderRadius: 4, objectFit: 'cover',
+                                      width: 36, height: 36, objectFit: 'cover',
                                       flexShrink: 0, background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                     }} />
                                   ) : isVideo ? (
                                     <div style={{
-                                      width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                                      width: 36, height: 36, flexShrink: 0,
                                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     }}>
@@ -901,7 +955,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                     </div>
                                   ) : (
                                     <div style={{
-                                      width: 36, height: 36, borderRadius: 4, flexShrink: 0,
+                                      width: 36, height: 36, flexShrink: 0,
                                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
                                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                                     }}>
@@ -930,7 +984,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                                   style={{
                                     background: 'none', border: 'none', cursor: 'pointer',
                                     color: deletingUploadId === u.id ? 'var(--text-muted)' : 'var(--danger, #ef4444)',
-                                    padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    padding: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   }}
                                 >
                                   {deletingUploadId === u.id
@@ -992,7 +1046,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     style={{
                       padding: '10px 8px', background: !form.templateId ? 'var(--accent)' : 'var(--bg-card)',
                       border: '2px solid ' + (!form.templateId ? 'var(--accent)' : 'var(--border)'),
-                      borderRadius: 6, cursor: 'pointer', color: !form.templateId ? 'white' : 'var(--text-primary)',
+                      cursor: 'pointer', color: !form.templateId ? 'white' : 'var(--text-primary)',
                       fontSize: 12, fontWeight: 500, textAlign: 'center',
                     }}
                   >
@@ -1014,12 +1068,12 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                         padding: '6px 8px', textAlign: 'center', cursor: 'pointer',
                         background: form.templateId === tmpl.id ? 'var(--accent)' : 'var(--bg-card)',
                         border: '2px solid ' + (form.templateId === tmpl.id ? 'var(--accent)' : 'var(--border)'),
-                        borderRadius: 6, color: form.templateId === tmpl.id ? 'white' : 'var(--text-primary)',
+                        color: form.templateId === tmpl.id ? 'white' : 'var(--text-primary)',
                         fontSize: 11, fontWeight: 500, overflow: 'hidden',
                       }}
                     >
                       <div style={{
-                        height: 28, borderRadius: 3, marginBottom: 4,
+                        height: 28, marginBottom: 4,
                         ...cardBackground(tmpl),
                       }} />
                       {tmpl.teamId && <Users size={10} style={{ marginRight: 4, verticalAlign: '-1px' }} aria-label="Team template" />}
@@ -1113,7 +1167,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             </form>
 
             {forkError && (
-              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '8px 12px', fontSize: 13, color: '#f87171', marginTop: 8 }}>
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '8px 12px', fontSize: 13, color: '#f87171', marginTop: 8 }}>
                 {forkError}
               </div>
             )}
@@ -1129,7 +1183,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                     <div key={p.folder} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                       background: 'var(--bg-primary)', border: '1px solid var(--border)',
-                      borderRadius: 8, padding: '10px 14px',
+                      padding: '10px 14px',
                     }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 600 }}>{p.title}</div>
@@ -1164,9 +1218,11 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
       )}
 
       {/* Billing modal */}
+      {survey && <SignupSurvey firstTime={survey === 'first'} onClose={closeSurvey} />}
+
       {showBillingModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowBillingModal(false)}>
-          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: 28, width: 400, maxWidth: '90vw', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700 }}>Subscription</h3>
 
             {billingLoading ? (
@@ -1174,13 +1230,13 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
             ) : (
               <>
                 {/* Current plan */}
-                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
+                <div style={{ background: 'var(--bg-primary)', padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontSize: 14, fontWeight: 600 }}>Current plan</span>
                     <span style={{
-                      fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, textTransform: 'uppercase',
-                      background: planInfo?.plan !== 'free' ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.08)',
-                      color: planInfo?.plan !== 'free' ? '#818cf8' : 'var(--text-muted)',
+                      fontSize: 11, fontWeight: 700, padding: '3px 10px', textTransform: 'uppercase',
+                      background: planInfo?.plan !== 'free' ? 'var(--accent-wash)' : 'var(--bg-hover)',
+                      color: planInfo?.plan !== 'free' ? 'var(--accent-light)' : 'var(--text-muted)',
                     }}>{planInfo?.planName || planInfo?.plan || 'Free'}</span>
                   </div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -1197,7 +1253,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 </div>
 
                 {/* Usage */}
-                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: 16, marginBottom: 20, border: '1px solid var(--border)' }}>
+                <div style={{ background: 'var(--bg-primary)', padding: 16, marginBottom: 20, border: '1px solid var(--border)' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Usage</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -1212,27 +1268,44 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                 </div>
 
                 {/* Actions */}
-                {!billingStatus?.active && plansForSale.some(p => p.id !== planInfo?.plan) && (
-                  <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
-                    {plansForSale.filter(p => p.id !== planInfo?.plan).flatMap(p => (p.prices?.length ? p.prices : [null]).map(price => (
-                      <button key={`${p.id}-${price?.priceId || ''}`} onClick={() => handleUpgrade(p.id, price?.priceId)} title={planSummary(p).join(' · ')}
-                        style={{ padding: '10px 16px', borderRadius: 8, border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                        Upgrade to {p.name} — {price && price.amountCents != null ? priceText(price) : price?.interval === 'year' ? 'yearly' : p.priceLabel || 'monthly'}
-                      </button>
-                    )))}
-                  </div>
-                )}
+                {!billingStatus?.active && plansForSale.some(p => p.id !== planInfo?.plan) && (() => {
+                  // The education price, for a verified school email (taken off at checkout)
+                  const edu = discounts?.education?.eligible ? discounts.education : null
+                  return (
+                    <>
+                      {edu && (
+                        <p className="billing-note" role="status">
+                          Education price: {discountText(edu)} for your {edu.domain} address, taken off at checkout.
+                        </p>
+                      )}
+                      <div style={{ display: 'grid', gap: 8, marginBottom: 8 }}>
+                        {plansForSale.filter(p => p.id !== planInfo?.plan).flatMap(p => (p.prices?.length ? p.prices : [null]).map(price => (
+                          <button key={`${p.id}-${price?.priceId || ''}`} onClick={() => handleUpgrade(p.id, price?.priceId)} title={planSummary(p).join(' · ')}
+                            style={{ padding: '10px 16px', border: 'none', background: price?.interval === 'year' ? 'none' : 'var(--accent)', color: price?.interval === 'year' ? 'var(--text-primary)' : '#fff', outline: price?.interval === 'year' ? '1px solid var(--accent)' : 'none', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                            Upgrade to {p.name} — {price && price.amountCents != null ? priceText(edu ? discountedPrice(price, edu) : price) : price?.interval === 'year' ? 'yearly' : p.priceLabel || 'monthly'}
+                          </button>
+                        )))}
+                      </div>
+                      {!edu && discounts?.education && (
+                        <p className="billing-note">
+                          Students and educators get {discountText(discounts.education)}: add your school email to your account (your picture › Manage account › Email addresses), verify it, then come back here.
+                        </p>
+                      )}
+                      {!edu && discounts?.promotionCodes && <p className="billing-note">Have a promotion code? You can enter it at checkout.</p>}
+                    </>
+                  )
+                })()}
                 <div style={{ display: 'flex', gap: 8 }}>
                   {!billingStatus?.active ? null : billingStatus.cancelAtPeriodEnd ? (
-                    <button onClick={handleResumeSubscription} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    <button onClick={handleResumeSubscription} style={{ flex: 1, padding: '10px 16px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                       Resume subscription
                     </button>
                   ) : (
-                    <button onClick={handleCancelSubscription} style={{ flex: 1, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+                    <button onClick={handleCancelSubscription} style={{ flex: 1, padding: '10px 16px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
                       Cancel renewal
                     </button>
                   )}
-                  <button onClick={() => setShowBillingModal(false)} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
+                  <button onClick={() => setShowBillingModal(false)} style={{ padding: '10px 16px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: 14, cursor: 'pointer' }}>
                     Close
                   </button>
                 </div>

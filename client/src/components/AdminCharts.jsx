@@ -45,7 +45,7 @@ function Tooltip({ x, containerWidth, value, label }) {
   return (
     <div role="status" style={{
       position: 'absolute', top: 0, left, width, pointerEvents: 'none',
-      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
       padding: '6px 10px', boxShadow: '0 4px 14px rgba(0,0,0,0.25)', fontSize: 12, lineHeight: 1.4,
     }}>
       <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{value}</div>

@@ -202,6 +202,17 @@ async function createInvite(storage, teamId, userId, { role, email, days } = {})
   return { token, invite: rows[0] }
 }
 
+// How many invites for an email address userId has made in the last hour,
+// as a cap on the invitations the site emails for them
+async function recentEmailInvites(db, userId) {
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS n FROM team_invites
+      WHERE created_by = $1 AND email IS NOT NULL AND created_at > NOW() - interval '1 hour'`,
+    [userId]
+  )
+  return rows[0].n
+}
+
 async function revokeInvite(storage, teamId, userId, inviteId) {
   const myRole = await roleIn(storage, teamId, userId)
   if (!myRole) throw new TeamError(404, 'Team not found')
@@ -458,7 +469,7 @@ module.exports = {
   isManager, takesSeat, roleIn, cleanName, cleanSeats,
   createPaidTeam, setTeamSubscription, billingOf, setSeats,
   listTeams, getTeam, renameTeam,
-  createInvite, revokeInvite, describeInvite, acceptInvite,
+  createInvite, revokeInvite, findInvite, recentEmailInvites, describeInvite, acceptInvite,
   changeRole, removeMember, transferOwnership,
   adminListTeams, adminCreateTeam, adminUpdateTeam, adminDeleteTeam,
 }
