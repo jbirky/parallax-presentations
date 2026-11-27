@@ -161,6 +161,7 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
       .logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; white-space: nowrap; }
       .logo .wm { display: inline-flex; align-items: baseline; font: 800 28px/1 var(--display); letter-spacing: -0.035em; }
       .logo .wm-p { display: block; flex: none; width: 0.69em; height: 0.69em; margin-right: 0.05em; }
+      .vh { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
       .beta { padding: 3px 6px; font: 700 10px/1.2 Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--bg); background: var(--text); }
       nav { display: flex; align-items: center; gap: 2px; }
       nav a { padding: 12px 10px; color: var(--text); font-size: 14.5px; font-weight: 500; text-decoration: none; text-underline-offset: 7px; text-decoration-thickness: 2px; white-space: nowrap; }
@@ -210,7 +211,7 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
   <body>
     <header>
       <div class="wrap">
-        <a class="logo" href="/" aria-label="Parallax"><span class="wm">${MARK}<span class="word">arallax</span></span><span class="beta">Beta</span></a>
+        <a class="logo" href="/" aria-label="Parallax"><span class="wm">${MARK}<span class="word"><span class="vh">P</span>arallax</span></span><span class="beta">Beta</span></a>
         <nav aria-label="Main">
           ${[...links, THEME_BUTTON, `<a class="btn" href="${esc(end[0])}">${esc(end[1])}</a>`].join('\n          ')}
         </nav>
