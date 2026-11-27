@@ -14,7 +14,8 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import katex from 'katex'
-import PracticeDemo, { TALK, MiniSlide } from './PracticeDemo'
+import PracticeDemo, { TALK } from './PracticeDemo'
+import { MiniSlide } from './TalkSlide'
 import { clock } from '../../utils/practice'
 import { track } from '../../utils/analytics'
 
@@ -54,9 +55,9 @@ function Thumb({ slide, className = '' }) {
 const SECTIONS = ['Opening', 'The evidence', 'What it means']
 const SECTION_OF = [0, 1, 1, 2, 2]
 const OUTLINE_NOTES = [
-  [{ t: 'Ask it: what holds a galaxy together?', l: 0 }],
+  [{ t: 'Open on the puzzle: drag the halo slider', l: 0 }],
   [{ t: 'Two clues, forty years apart', l: 0 }, { t: 'Zwicky, 1933: Coma’s galaxies', l: 1 }, { t: 'Rubin and Ford, 1970: Andromeda', l: 1 }],
-  [{ t: 'Drag the halo slider live', l: 0 }, { t: 'Stop where the light runs out', l: 0 }],
+  [{ t: 'Planck’s number: about 84% of matter is dark', l: 0 }, { t: 'Say what the other 16% is', l: 0 }],
   [{ t: 'One lensing picture, no equations', l: 0 }],
   [{ t: 'Leave a minute for questions', l: 0 }],
 ]
@@ -216,10 +217,10 @@ export function BuildDemo() {
       </Head>
       <div className="lp-sd-grid build">
         <div className="lp-pr-window">
-          <Chrome title="Editor · Why galaxies spin too fast" note="Slide 3" />
+          <Chrome title="Editor · Dark matter in ten minutes" note="New slide" />
           <div className="lp-pr-stage lp-sd-canvas" ref={stage}>
             <div className="lp-mini lp-sd-slide">
-              <h4>Why galaxies spin too fast</h4>
+              <h4>Why the curve stays flat</h4>
               <div {...boxProps('text')}>
                 Far from the center, stars orbit as fast as those near it{marks.map((k, i) => <span key={i} className="lp-sd-cite">[{n(k)}]</span>)}
               </div>
@@ -227,7 +228,7 @@ export function BuildDemo() {
             </div>
           </div>
           <div className="lp-sd-refs" aria-live="polite">
-            <Thumb slide={{ kind: 'list', title: 'References', items: order.length ? order.map(k => `[${n(k)}] ${LIBRARY.find(e => e.key === k).ref}`) : ['Cite a paper and it’s listed here'] }} />
+            <Thumb slide={{ kind: 'refs', title: 'References', items: order.length ? order.map(k => `[${n(k)}] ${LIBRARY.find(e => e.key === k).ref}`) : ['Cite a paper and it’s listed here'] }} />
             <span><b>Slide 6 · References</b>Made from what the slides cite, in the order they cite it. It changes as they do.</span>
           </div>
         </div>
@@ -258,9 +259,9 @@ export function BuildDemo() {
 // ── Present: the pen, the speaker view and Live Present ──────────────────
 
 const SPEAKER_NOTES = [
-  'Open with the question: what holds a galaxy together?',
+  'Open on the puzzle: the outer stars should slow down, and they don’t. Drag the halo slider.',
   'Zwicky first, then Rubin’s curves. Two clues, forty years apart.',
-  'Drag the halo slider live. Pause where the curve stays flat.',
+  'Planck’s number. Let it sit before explaining it.',
   'One lensing picture is enough. Skip the math.',
   'Thank the group, then take questions.',
 ]
