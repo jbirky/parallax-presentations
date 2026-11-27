@@ -52,6 +52,18 @@ describe('the landing page', () => {
     const moving = [...el.querySelectorAll('.lp-parallax')]
     expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'Make your next talk in Parallax'])
     for (const w of moving) expect(w.style.getPropertyValue('--px')).not.toBe('')
+    // And the closing mark's red and blue P's (the clip path's red P too), the red twice as far
+    const eyes = [...el.querySelectorAll('.lp-cta-mark [data-eye]')]
+    expect(eyes.map(p => p.dataset.eye)).toEqual(['red', 'red', 'blue', 'blue'])
+    const shift = p => p.getAttribute('transform').match(/translate\((\S+) (\S+)\)/).slice(1).map(Number)
+    const [[rx, ry], [bx, by]] = [shift(eyes[0]), shift(eyes[2])]
+    expect(rx).toBeLessThan(-6)
+    expect(ry).toBeLessThan(0)
+    expect(bx).toBeLessThan(6)
+    expect(-6 - rx).toBeCloseTo(2 * (6 - bx), 1)
+    expect(shift(eyes[1])).toEqual([rx, ry])
+    // The nav and footer marks hold still
+    expect(el.querySelector('.lp-nav [data-eye="red"]').getAttribute('transform')).toBe('translate(-6 0)')
   })
 
   it('shows the examples by field', async () => {

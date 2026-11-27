@@ -1234,7 +1234,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-cta h2 { font-size: clamp(42px, 5.6vw, 80px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); text-shadow: var(--lp-fringe); }
 .lp-cta p { font-size: 20px; color: var(--lp-strong); }
 .lp-cta .lp-ctas { margin-top: 8px; }
-.lp-cta-mark { flex: 0 1 300px; width: 100%; max-width: 300px; height: auto; }
+.lp-cta-mark { flex: 0 1 300px; width: 100%; max-width: 300px; height: auto; overflow: visible; }
 @media (max-width: 700px) { .lp-cta-mark { display: none; } }
 
 /* Footer */

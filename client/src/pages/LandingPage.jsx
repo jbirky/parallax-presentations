@@ -23,6 +23,7 @@ import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-reac
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
 import Mark from '../components/ParallaxMark'
+import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import PracticeDemo from '../components/landing/PracticeDemo'
@@ -96,59 +97,15 @@ const PLANS = [
 ]
 
 // Words whose red and blue copies sit at two depths behind the ink, so they
-// shift against the pointer the way far things do as you move your head:
-// the red, farthest back, most, the blue less, the ink not at all. Each set
-// moves by where the pointer is from its own center, so it follows as the
-// page scrolls too. They ease toward the pointer and back to rest when it
-// leaves the window. Still for anyone who asks for less motion, and on touch
-// screens.
+// shift against the pointer (usePointerDepth): the red, farthest back, most,
+// the blue less, the ink not at all. The offsets are CSS (.lp-parallax).
+const setDepthVars = (el, x, y) => {
+  el.style.setProperty('--px', x.toFixed(3))
+  el.style.setProperty('--py', y.toFixed(3))
+}
 export function ParallaxWords({ children }) {
   const ref = useRef(null)
-  useEffect(() => {
-    const el = ref.current
-    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    const clamp = v => Math.max(-1, Math.min(1, v))
-    let target = { x: 0, y: 0 }
-    let pointer = null
-    const at = { x: 0, y: 0 }
-    let frame = 0
-    const step = () => {
-      at.x += (target.x - at.x) * 0.12
-      at.y += (target.y - at.y) * 0.12
-      el.style.setProperty('--px', at.x.toFixed(3))
-      el.style.setProperty('--py', at.y.toFixed(3))
-      frame = Math.abs(target.x - at.x) + Math.abs(target.y - at.y) > 0.002 ? requestAnimationFrame(step) : 0
-    }
-    const go = () => { if (!frame) frame = requestAnimationFrame(step) }
-    const aim = () => {
-      if (!pointer) return
-      const r = el.getBoundingClientRect()
-      target = {
-        x: clamp((pointer.x - (r.left + r.width / 2)) / (window.innerWidth / 2)),
-        y: clamp((pointer.y - (r.top + r.height / 2)) / (window.innerHeight / 2)),
-      }
-      go()
-    }
-    const move = e => {
-      if (e.pointerType === 'touch') return
-      pointer = { x: e.clientX, y: e.clientY }
-      aim()
-    }
-    const rest = () => { pointer = null; target = { x: 0, y: 0 }; go() }
-    const page = document.documentElement
-    window.addEventListener('pointermove', move, { passive: true })
-    // Capturing, so a scroll of the page's own scroller counts too
-    document.addEventListener('scroll', aim, { capture: true, passive: true })
-    page.addEventListener('mouseleave', rest)
-    window.addEventListener('blur', rest)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      document.removeEventListener('scroll', aim, { capture: true })
-      page.removeEventListener('mouseleave', rest)
-      window.removeEventListener('blur', rest)
-      cancelAnimationFrame(frame)
-    }
-  }, [])
+  usePointerDepth(ref, setDepthVars)
   return <em ref={ref} className="lp-parallax">{children}</em>
 }
 
@@ -492,7 +449,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                   {guestEnabled && <button type="button" className="lp-btn ghost" onClick={() => { track('sign-in', { from: 'cta' }); onSignIn() }}>Sign in</button>}
                 </div>
               </div>
-              <Mark id="cta" className="lp-cta-mark" />
+              <Mark id="cta" className="lp-cta-mark" moving />
             </div>
           </section>
 
