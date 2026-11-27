@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The Parallax mark (client/src/components/ParallaxMark.jsx): the P as each eye
+       sees it, red and blue, and where the two overlap in ink, on a rounded tile -->
+  <defs>
+    <clipPath id="red"><path d="M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z" transform="translate(-8 0)" clip-rule="evenodd"/></clipPath>
+  </defs>
+  <rect x="102" y="102" width="820" height="820" rx="184" fill="#ecebe6" stroke="rgba(31,31,34,0.14)" stroke-width="4"/>
+  <g transform="translate(90.125 90.125) scale(8.4375)" fill-rule="evenodd">
+    <path d="M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z" transform="translate(-8 0)" fill="#ee2b2b"/>
+    <path d="M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z" transform="translate(4 0)" fill="#1e60ff"/>
+    <path d="M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z" transform="translate(4 0)" fill="#1f1f22" clip-path="url(#red)"/>
+  </g>
+</svg>

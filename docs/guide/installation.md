@@ -63,25 +63,31 @@ Go to the [Releases page](https://github.com/jbirky/parallax-presentations/relea
 
 | Platform | File |
 |---|---|
-| Linux (AppImage) | `Slides-Editor-x.x.x.AppImage` |
 | Linux (Debian/Ubuntu) | `parallax_x.x.x_amd64.deb` |
-| macOS | `Slides-Editor-x.x.x.dmg` |
-| Windows | `Slides-Editor-Setup-x.x.x.exe` |
-
-### Linux AppImage
-
-```bash
-chmod +x Slides-Editor-*.AppImage
-./Slides-Editor-*.AppImage
-```
+| Linux (AppImage) | `Parallax-x.x.x-x86_64.AppImage` |
+| macOS | `Parallax-x.x.x.dmg` |
+| Windows | `Parallax Setup x.x.x.exe` |
 
 ### Linux .deb
 
 ```bash
-sudo dpkg -i parallax_*.deb
+sudo apt install ./parallax_*.deb
 # Then launch from your application menu or run:
 parallax
 ```
+
+The package is called `parallax`, so `sudo apt remove parallax` uninstalls it. It replaces the `revealjs-editor` package that earlier versions installed, and keeps your presentations.
+
+### Linux AppImage
+
+```bash
+chmod +x Parallax-*.AppImage
+./Parallax-*.AppImage
+```
+
+::: warning Ubuntu 24.04 and later
+The app runs every page in Chromium's sandbox, since a deck can run its author's code. On Ubuntu 24.04 and later the sandbox needs an AppArmor profile, which the .deb installs and an AppImage can't, so there the AppImage stops at startup. Install the .deb instead.
+:::
 
 ::: tip
 On first launch the desktop app will open both the editor window and a local server on port 3002. You can also access the editor from a browser at `http://localhost:3002`.

@@ -2,6 +2,16 @@ appId: com.parallax.app
 productName: Parallax
 directories:
   output: dist-electron
+  # The icon (icon.png, drawn from icon.svg; icons/ holds it at each size an
+  # icon theme looks for) and the Linux install scripts
+  buildResources: build
+
+# Electron takes the app's name from package.json: "Parallax", so its windows
+# match the desktop entry (StartupWMClass, and Wayland's app id) and show the
+# icon. Where it keeps presentations is set apart from the name, in main.js.
+extraMetadata:
+  productName: Parallax
+  desktopName: parallax.desktop
 
 files:
   - electron/**/*
@@ -29,5 +39,40 @@ linux:
     - deb
   category: Office
   executableName: parallax
-  executableArgs:
-    - "--no-sandbox"
+  icon: build/icons
+  synopsis: Interactive and intuitive slides for complex concepts
+  description: >-
+    Parallax is a slide editor. Put live graphs, physics and circuit diagrams,
+    equations and 3D molecules on a slide, and move them while you present.
+
+# Chromium's sandbox is on everywhere: a deck runs its author's code. The .deb
+# installs what the sandbox needs (an AppArmor profile on Ubuntu 24.04 and
+# later), so it's the package to use there; the AppImage can't install one.
+deb:
+  # The package is "parallax" on every channel, whatever package.json names it
+  packageName: parallax
+  artifactName: parallax_${version}_${arch}.${ext}
+  afterInstall: build/linux/after-install.sh
+  afterRemove: build/linux/after-remove.sh
+  # electron-builder's list, plus ALSA, which Electron won't start without
+  # (a desktop has it already; a minimal system may not). Ubuntu 24.04 calls
+  # it libasound2t64; there "libasound2" alone can install an OSS stand-in
+  # that Electron can't use, so the real one is named first.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libasound2t64 | libasound2
+  # The desktop app's package was "revealjs-editor" through 1.0.0
+  fpm:
+    - --replaces=revealjs-editor
+    - --conflicts=revealjs-editor
+
+appImage:
+  artifactName: Parallax-${version}-${arch}.${ext}
