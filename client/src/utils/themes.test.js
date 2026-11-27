@@ -3,8 +3,8 @@ import { THEME_LIST, themeOf, revealTheme, deckTextFont, deckTextStyles, slidePa
 
 describe('themes', () => {
   it('has reveal’s eleven and Parallax’s own, light and dark', () => {
-    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax'])
-    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'parallax'])
+    expect(THEME_LIST.map(t => t.id)).toEqual(['black', 'white', 'league', 'beige', 'sky', 'night', 'serif', 'simple', 'solarized', 'moon', 'dracula', 'bauhaus', 'pixel', 'mission', 'turin', 'gutter', 'lemma', 'beamline', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'prompt', 'zenith', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'downforce', 'parallax', 'fabrica'])
+    expect(THEME_LIST.filter(t => !t.dark).map(t => t.id)).toEqual(['white', 'beige', 'sky', 'serif', 'simple', 'solarized', 'bauhaus', 'mission', 'turin', 'gutter', 'lemma', 'kourou', 'ledger', 'preprint', 'transit', 'trace', 'quincunx', 'partition', 'holdout', 'separatrix', 'runlevel', 'fanout', 'cell', 'graticule', 'eigenstate', 'mise', 'valence', 'quadrille', 'inspiral', 'parti', 'parallax', 'fabrica'])
     expect(themeOf('nope').id).toBe('black')
     expect(themeBackgroundStyle('sky').background).toMatch(/^radial-gradient/)
     expect(cssText({ backgroundColor: '#fff' })).toBe('background-color:#fff;')
@@ -115,6 +115,9 @@ describe('themes', () => {
     expect(deckTextFont('', 'parallax')).toBe('Inter, sans-serif')
     expect(deckTextStyles(null, 'parallax')).toMatchObject({ headingFont: 'Archivo, sans-serif', headingWeight: 800, h1Size: 72 })
     expect(slidePalette({}, 'parallax')).toMatchObject({ text: '#2e2e31', heading: '#0c0c0d', link: '#1a56e8', accent: '#ee2b2b', dark: false })
+    expect(deckTextFont('', 'fabrica')).toBe("'Source Sans 3', sans-serif")
+    expect(deckTextStyles(null, 'fabrica')).toMatchObject({ headingFont: "'EB Garamond', Georgia, serif", headingWeight: 600, h2Size: 46 })
+    expect(slidePalette({}, 'fabrica')).toMatchObject({ text: '#3b2f26', heading: '#2a1f17', link: '#2c5a85', accent: '#a8322a', dark: false })
     // Colors of stability: Separatrix's, kept on a light background of a slide's own, and no other theme's
     expect(slidePalette({}, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })
     expect(slidePalette({ background: { type: 'color', color: '#f0f0e8' } }, 'separatrix')).toMatchObject({ stable: '#1d5fa8', unstable: '#cf4f1b' })

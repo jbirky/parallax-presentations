@@ -6501,7 +6501,8 @@ var THEME_LIST = [
   { id: "inspiral", label: "Inspiral", background: "#f8f9fb", text: "#1d2433", heading: "#101828", link: "#0072b2", accent: "#b14d00", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Questrial, sans-serif", headingWeight: 400 }, note: "Gravitational waves: black holes spiraling in a spacetime funnel on the title slide, moving when presented; a strain trace under titles, spectrogram section slides, a chirp footer" },
   { id: "parti", label: "Parti", background: "#f5f5f2", text: "#1f1f1e", heading: "#111110", link: "#c92a2a", accent: "#c92a2a", dark: false, reveal: "white", font: "Archivo, sans-serif", textStyles: { bodySize: 26, h1Size: 60, h2Size: 38, h3Size: 28, headingFont: "Archivo, sans-serif", headingWeight: 700 }, note: "Architecture as drawing sheets: drawing titles, a title block and massing sketch, structural-grid sections, revision clouds, keynotes, schedules" },
   { id: "downforce", label: "Downforce", background: "#0f1115", backgroundCss: "radial-gradient(118% 115% at 88% -12%, #1c2232 0%, rgba(15, 17, 21, 0) 62%), #0f1115", text: "#e8ebf0", heading: "#ffffff", link: "#ff5a4f", accent: "#b98cff", dark: true, reveal: "black", font: "Saira, sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Saira, sans-serif", headingWeight: 700 }, note: "Race-car engineering as a timing screen: kerbs under titles, a circuit in sectors, start lights for sections, radio-message quotes, a sector footer" },
-  { id: "parallax", label: "Parallax", background: "#fafaf7", text: "#2e2e31", heading: "#0c0c0d", link: "#1a56e8", accent: "#ee2b2b", dark: false, reveal: "white", font: "Inter, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 44, h3Size: 30, headingFont: "Archivo, sans-serif", headingWeight: 800 }, note: "Parallax’s own look: ink on paper, the red and blue of 3D glasses as stereo fringes, title and section slides in ink with red and blue edges, the mark, Archivo headings" }
+  { id: "parallax", label: "Parallax", background: "#fafaf7", text: "#2e2e31", heading: "#0c0c0d", link: "#1a56e8", accent: "#ee2b2b", dark: false, reveal: "white", font: "Inter, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 44, h3Size: 30, headingFont: "Archivo, sans-serif", headingWeight: 800 }, note: "Parallax’s own look: ink on paper, the red and blue of 3D glasses as stereo fringes, title and section slides in ink with red and blue edges, the mark, Archivo headings" },
+  { id: "fabrica", label: "Fabrica", background: "#f6f0e4", backgroundCss: "radial-gradient(130% 125% at 50% 42%, #f6f0e4 58%, #ebe0ca)", text: "#3b2f26", heading: "#2a1f17", link: "#2c5a85", accent: "#a8322a", dark: false, reveal: "white", font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 46, h3Size: 30, headingFont: "'EB Garamond', Georgia, serif", headingWeight: 600 }, note: "Anatomy as the plates of an atlas: sepia on vellum inside a double rule, an engraved nerve, artery and vein on the title slide, label-leader bullets, Latin names in italic, a clinical-note quote, EB Garamond headings" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -36994,8 +36995,407 @@ var parallax_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/fabrica.css
+var fabrica_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Fabrica theme's stylesheet: anatomy and physiology as the plates of
+   an anatomical atlas. Sepia ink (#2a1f17) on vellum (#f6f0e4), and the
+   atlas's own colors for the body's three cables: artery red (#a8322a) for
+   what's marked, vein blue (#2c5a85) for links, nerve yellow (#d9a93a) in
+   the drawings. Headings in EB Garamond, text in Source Sans 3
+   (utils/themes.js: the fonts and the text sizes, which the Themes panel's
+   Text tab can change). Named for Vesalius's De humani corporis fabrica.
+
+   It's scoped to .deck-theme-fabrica, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   Slides are plates, inside a plate's double rule. The title slide is the
+   frontispiece: the title at the left, and at the right an engraving of a
+   neurovascular bundle (a nerve between its artery and vein, each an inked
+   tube) branching down the plate, with label leaders. Section slides are a
+   deeper vellum, the title under a leader's dot. Slide titles have a short
+   red rule under them. Bullets are label leaders, a hairline to a red dot;
+   a bullet whose bold first words sit on a line of their own makes them
+   its label, in red capitals. Numbered lists are the plate's key, numbers
+   in italic red. A Heading 4 is a figure label in spaced capitals with a
+   hairline after it; a Heading 6 a structure's Latin name, in italic. A
+   quote is a clinical note, its bold first words the label. Tables are the
+   plate's key, the header in spaced capitals over a double rule, the first
+   column in Garamond. The Big Number is red Garamond. The footer's page
+   number reads "Plate"; with its sections in sequence, done ones are ink,
+   the current one red, those to come pale. */
+
+/* reveal.js: links blue, the arrows and the progress bar red */
+.deck-theme-fabrica {
+  --r-background-color: #f6f0e4;
+  --r-main-color: #3b2f26;
+  --r-heading-color: #2a1f17;
+  --r-link-color: #2c5a85;
+  --r-link-color-dark: #1f4468;
+  --r-link-color-hover: #a8322a;
+  --r-selection-background-color: #ecd9a8;
+  --r-selection-color: #2a1f17;
+  --fa-figure: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-25 0 358 353' width='358' height='353' fill='none' stroke-linecap='round'%3E%3Cg stroke='%234a3828'%3E%3Cpath d='M141 -6Q149 55 141 118' stroke-width='8.7'/%3E%3Cpath d='M144 121Q166 158 182 199' stroke-width='6.6'/%3E%3Cpath d='M185 200Q211 222 240 239' stroke-width='5.2'/%3E%3Cpath d='M241 238Q264 249 285 263' stroke-width='4.2'/%3E%3Cpath d='M286 262Q303 269 318 281' stroke-width='3.6'/%3E%3Cpath d='M285 262Q298 278 312 291' stroke-width='3.6'/%3E%3Cpath d='M240 237Q260 255 274 278' stroke-width='4.2'/%3E%3Cpath d='M275 278Q289 292 306 303' stroke-width='3.6'/%3E%3Cpath d='M274 277Q276 296 283 316' stroke-width='3.6'/%3E%3Cpath d='M184 196Q191 227 186 260' stroke-width='5.2'/%3E%3Cpath d='M188 261Q201 282 209 306' stroke-width='4.2'/%3E%3Cpath d='M210 306Q220 321 234 335' stroke-width='3.6'/%3E%3Cpath d='M209 304Q211 322 207 339' stroke-width='3.6'/%3E%3Cpath d='M188 259Q182 281 173 302' stroke-width='4.2'/%3E%3Cpath d='M174 303Q170 319 171 335' stroke-width='3.6'/%3E%3Cpath d='M174 302Q160 311 150 327' stroke-width='3.6'/%3E%3Cpath d='M144 115Q120 151 100 190' stroke-width='6.6'/%3E%3Cpath d='M102 193Q99 225 99 257' stroke-width='5.2'/%3E%3Cpath d='M101 258Q111 280 117 303' stroke-width='4.2'/%3E%3Cpath d='M118 303Q134 315 145 331' stroke-width='3.6'/%3E%3Cpath d='M118 302Q120 321 122 340' stroke-width='3.6'/%3E%3Cpath d='M101 256Q95 281 89 305' stroke-width='4.2'/%3E%3Cpath d='M90 306Q95 323 95 341' stroke-width='3.6'/%3E%3Cpath d='M90 305Q84 322 73 338' stroke-width='3.6'/%3E%3Cpath d='M103 189Q76 203 54 225' stroke-width='5.2'/%3E%3Cpath d='M54 227Q43 247 26 262' stroke-width='4.2'/%3E%3Cpath d='M26 263Q18 279 14 296' stroke-width='3.6'/%3E%3Cpath d='M27 262Q11 269 -2 281' stroke-width='3.6'/%3E%3Cpath d='M55 226Q37 239 16 248' stroke-width='4.2'/%3E%3Cpath d='M16 249Q4 263 -6 277' stroke-width='3.6'/%3E%3Cpath d='M16 249Q2 256 -12 265' stroke-width='3.6'/%3E%3C/g%3E%3Cg stroke='%234f78a8'%3E%3Cpath d='M141 -6Q149 55 141 118' stroke-width='6.5'/%3E%3Cpath d='M144 121Q166 158 182 199' stroke-width='4.4'/%3E%3Cpath d='M185 200Q211 222 240 239' stroke-width='3.0'/%3E%3Cpath d='M241 238Q264 249 285 263' stroke-width='2.0'/%3E%3Cpath d='M286 262Q303 269 318 281' stroke-width='1.4'/%3E%3Cpath d='M285 262Q298 278 312 291' stroke-width='1.4'/%3E%3Cpath d='M240 237Q260 255 274 278' stroke-width='2.0'/%3E%3Cpath d='M275 278Q289 292 306 303' stroke-width='1.4'/%3E%3Cpath d='M274 277Q276 296 283 316' stroke-width='1.4'/%3E%3Cpath d='M184 196Q191 227 186 260' stroke-width='3.0'/%3E%3Cpath d='M188 261Q201 282 209 306' stroke-width='2.0'/%3E%3Cpath d='M210 306Q220 321 234 335' stroke-width='1.4'/%3E%3Cpath d='M209 304Q211 322 207 339' stroke-width='1.4'/%3E%3Cpath d='M188 259Q182 281 173 302' stroke-width='2.0'/%3E%3Cpath d='M174 303Q170 319 171 335' stroke-width='1.4'/%3E%3Cpath d='M174 302Q160 311 150 327' stroke-width='1.4'/%3E%3Cpath d='M144 115Q120 151 100 190' stroke-width='4.4'/%3E%3Cpath d='M102 193Q99 225 99 257' stroke-width='3.0'/%3E%3Cpath d='M101 258Q111 280 117 303' stroke-width='2.0'/%3E%3Cpath d='M118 303Q134 315 145 331' stroke-width='1.4'/%3E%3Cpath d='M118 302Q120 321 122 340' stroke-width='1.4'/%3E%3Cpath d='M101 256Q95 281 89 305' stroke-width='2.0'/%3E%3Cpath d='M90 306Q95 323 95 341' stroke-width='1.4'/%3E%3Cpath d='M90 305Q84 322 73 338' stroke-width='1.4'/%3E%3Cpath d='M103 189Q76 203 54 225' stroke-width='3.0'/%3E%3Cpath d='M54 227Q43 247 26 262' stroke-width='2.0'/%3E%3Cpath d='M26 263Q18 279 14 296' stroke-width='1.4'/%3E%3Cpath d='M27 262Q11 269 -2 281' stroke-width='1.4'/%3E%3Cpath d='M55 226Q37 239 16 248' stroke-width='2.0'/%3E%3Cpath d='M16 249Q4 263 -6 277' stroke-width='1.4'/%3E%3Cpath d='M16 249Q2 256 -12 265' stroke-width='1.4'/%3E%3C/g%3E%3Cg stroke='%234a3828' stroke-opacity='.38' stroke-width='.7'%3E%3Cpath d='M141 -6Q149 55 141 118' transform='translate(1.6 0)'/%3E%3Cpath d='M144 121Q166 158 182 199' transform='translate(1.1 0)'/%3E%3Cpath d='M144 115Q120 151 100 190' transform='translate(1.1 0)'/%3E%3C/g%3E%3Cg stroke='%234a3828'%3E%3Cpath d='M159 -6Q167 55 159 118' stroke-width='8.7'/%3E%3Cpath d='M156 115Q177 153 194 193' stroke-width='6.6'/%3E%3Cpath d='M190 193Q216 215 245 232' stroke-width='5.2'/%3E%3Cpath d='M244 233Q267 244 288 258' stroke-width='4.2'/%3E%3Cpath d='M288 259Q305 266 320 277' stroke-width='3.6'/%3E%3Cpath d='M288 259Q301 275 315 289' stroke-width='3.6'/%3E%3Cpath d='M245 233Q264 251 278 274' stroke-width='4.2'/%3E%3Cpath d='M277 275Q292 289 308 300' stroke-width='3.6'/%3E%3Cpath d='M278 276Q280 296 287 315' stroke-width='3.6'/%3E%3Cpath d='M192 196Q200 227 195 260' stroke-width='5.2'/%3E%3Cpath d='M193 259Q207 279 214 303' stroke-width='4.2'/%3E%3Cpath d='M213 303Q224 319 237 332' stroke-width='3.6'/%3E%3Cpath d='M213 305Q215 322 211 339' stroke-width='3.6'/%3E%3Cpath d='M193 261Q188 283 179 304' stroke-width='4.2'/%3E%3Cpath d='M178 303Q174 319 175 335' stroke-width='3.6'/%3E%3Cpath d='M177 304Q163 314 153 330' stroke-width='3.6'/%3E%3Cpath d='M156 121Q131 157 111 196' stroke-width='6.6'/%3E%3Cpath d='M110 193Q108 225 108 257' stroke-width='5.2'/%3E%3Cpath d='M107 256Q117 278 123 301' stroke-width='4.2'/%3E%3Cpath d='M121 301Q137 312 147 328' stroke-width='3.6'/%3E%3Cpath d='M122 302Q124 321 126 339' stroke-width='3.6'/%3E%3Cpath d='M107 258Q101 282 95 307' stroke-width='4.2'/%3E%3Cpath d='M94 306Q99 323 99 341' stroke-width='3.6'/%3E%3Cpath d='M94 307Q87 324 76 340' stroke-width='3.6'/%3E%3Cpath d='M108 197Q81 210 59 232' stroke-width='5.2'/%3E%3Cpath d='M58 230Q48 250 30 266' stroke-width='4.2'/%3E%3Cpath d='M30 265Q22 280 18 297' stroke-width='3.6'/%3E%3Cpath d='M29 266Q13 273 0 284' stroke-width='3.6'/%3E%3Cpath d='M58 231Q40 245 19 253' stroke-width='4.2'/%3E%3Cpath d='M19 252Q7 265 -3 280' stroke-width='3.6'/%3E%3Cpath d='M18 252Q4 260 -10 269' stroke-width='3.6'/%3E%3C/g%3E%3Cg stroke='%23c0463a'%3E%3Cpath d='M159 -6Q167 55 159 118' stroke-width='6.5'/%3E%3Cpath d='M156 115Q177 153 194 193' stroke-width='4.4'/%3E%3Cpath d='M190 193Q216 215 245 232' stroke-width='3.0'/%3E%3Cpath d='M244 233Q267 244 288 258' stroke-width='2.0'/%3E%3Cpath d='M288 259Q305 266 320 277' stroke-width='1.4'/%3E%3Cpath d='M288 259Q301 275 315 289' stroke-width='1.4'/%3E%3Cpath d='M245 233Q264 251 278 274' stroke-width='2.0'/%3E%3Cpath d='M277 275Q292 289 308 300' stroke-width='1.4'/%3E%3Cpath d='M278 276Q280 296 287 315' stroke-width='1.4'/%3E%3Cpath d='M192 196Q200 227 195 260' stroke-width='3.0'/%3E%3Cpath d='M193 259Q207 279 214 303' stroke-width='2.0'/%3E%3Cpath d='M213 303Q224 319 237 332' stroke-width='1.4'/%3E%3Cpath d='M213 305Q215 322 211 339' stroke-width='1.4'/%3E%3Cpath d='M193 261Q188 283 179 304' stroke-width='2.0'/%3E%3Cpath d='M178 303Q174 319 175 335' stroke-width='1.4'/%3E%3Cpath d='M177 304Q163 314 153 330' stroke-width='1.4'/%3E%3Cpath d='M156 121Q131 157 111 196' stroke-width='4.4'/%3E%3Cpath d='M110 193Q108 225 108 257' stroke-width='3.0'/%3E%3Cpath d='M107 256Q117 278 123 301' stroke-width='2.0'/%3E%3Cpath d='M121 301Q137 312 147 328' stroke-width='1.4'/%3E%3Cpath d='M122 302Q124 321 126 339' stroke-width='1.4'/%3E%3Cpath d='M107 258Q101 282 95 307' stroke-width='2.0'/%3E%3Cpath d='M94 306Q99 323 99 341' stroke-width='1.4'/%3E%3Cpath d='M94 307Q87 324 76 340' stroke-width='1.4'/%3E%3Cpath d='M108 197Q81 210 59 232' stroke-width='3.0'/%3E%3Cpath d='M58 230Q48 250 30 266' stroke-width='2.0'/%3E%3Cpath d='M30 265Q22 280 18 297' stroke-width='1.4'/%3E%3Cpath d='M29 266Q13 273 0 284' stroke-width='1.4'/%3E%3Cpath d='M58 231Q40 245 19 253' stroke-width='2.0'/%3E%3Cpath d='M19 252Q7 265 -3 280' stroke-width='1.4'/%3E%3Cpath d='M18 252Q4 260 -10 269' stroke-width='1.4'/%3E%3C/g%3E%3Cg stroke='%234a3828' stroke-opacity='.38' stroke-width='.7'%3E%3Cpath d='M159 -6Q167 55 159 118' transform='translate(1.6 0)'/%3E%3Cpath d='M156 115Q177 153 194 193' transform='translate(1.1 0)'/%3E%3Cpath d='M156 121Q131 157 111 196' transform='translate(1.1 0)'/%3E%3C/g%3E%3Cg stroke='%234a3828'%3E%3Cpath d='M150 -6Q158 55 150 118' stroke-width='11.2'/%3E%3Cpath d='M150 118Q172 156 188 196' stroke-width='8.3'/%3E%3Cpath d='M188 196Q213 218 243 235' stroke-width='6.4'/%3E%3Cpath d='M243 235Q266 246 287 261' stroke-width='5.0'/%3E%3Cpath d='M287 261Q304 268 319 279' stroke-width='4.1'/%3E%3Cpath d='M287 261Q299 276 314 290' stroke-width='4.1'/%3E%3Cpath d='M243 235Q262 253 276 276' stroke-width='5.0'/%3E%3Cpath d='M276 276Q290 290 307 302' stroke-width='4.1'/%3E%3Cpath d='M276 276Q278 296 285 315' stroke-width='4.1'/%3E%3Cpath d='M188 196Q195 227 191 260' stroke-width='6.4'/%3E%3Cpath d='M191 260Q204 281 211 304' stroke-width='5.0'/%3E%3Cpath d='M211 304Q222 320 235 333' stroke-width='4.1'/%3E%3Cpath d='M211 304Q213 322 209 339' stroke-width='4.1'/%3E%3Cpath d='M191 260Q185 282 176 303' stroke-width='5.0'/%3E%3Cpath d='M176 303Q172 319 173 335' stroke-width='4.1'/%3E%3Cpath d='M176 303Q161 313 152 329' stroke-width='4.1'/%3E%3Cpath d='M150 118Q125 154 106 193' stroke-width='8.3'/%3E%3Cpath d='M106 193Q103 225 104 257' stroke-width='6.4'/%3E%3Cpath d='M104 257Q114 279 120 302' stroke-width='5.0'/%3E%3Cpath d='M120 302Q135 313 146 330' stroke-width='4.1'/%3E%3Cpath d='M120 302Q122 321 124 339' stroke-width='4.1'/%3E%3Cpath d='M104 257Q98 282 92 306' stroke-width='5.0'/%3E%3Cpath d='M92 306Q97 323 97 341' stroke-width='4.1'/%3E%3Cpath d='M92 306Q86 323 75 339' stroke-width='4.1'/%3E%3Cpath d='M106 193Q78 206 56 228' stroke-width='6.4'/%3E%3Cpath d='M56 228Q46 249 28 264' stroke-width='5.0'/%3E%3Cpath d='M28 264Q20 280 16 297' stroke-width='4.1'/%3E%3Cpath d='M28 264Q12 271 -1 283' stroke-width='4.1'/%3E%3Cpath d='M56 228Q38 242 17 251' stroke-width='5.0'/%3E%3Cpath d='M17 251Q6 264 -4 279' stroke-width='4.1'/%3E%3Cpath d='M17 251Q3 258 -11 267' stroke-width='4.1'/%3E%3C/g%3E%3Cg stroke='%23e2b84a'%3E%3Cpath d='M150 -6Q158 55 150 118' stroke-width='9.0'/%3E%3Cpath d='M150 118Q172 156 188 196' stroke-width='6.1'/%3E%3Cpath d='M188 196Q213 218 243 235' stroke-width='4.2'/%3E%3Cpath d='M243 235Q266 246 287 261' stroke-width='2.8'/%3E%3Cpath d='M287 261Q304 268 319 279' stroke-width='1.9'/%3E%3Cpath d='M287 261Q299 276 314 290' stroke-width='1.9'/%3E%3Cpath d='M243 235Q262 253 276 276' stroke-width='2.8'/%3E%3Cpath d='M276 276Q290 290 307 302' stroke-width='1.9'/%3E%3Cpath d='M276 276Q278 296 285 315' stroke-width='1.9'/%3E%3Cpath d='M188 196Q195 227 191 260' stroke-width='4.2'/%3E%3Cpath d='M191 260Q204 281 211 304' stroke-width='2.8'/%3E%3Cpath d='M211 304Q222 320 235 333' stroke-width='1.9'/%3E%3Cpath d='M211 304Q213 322 209 339' stroke-width='1.9'/%3E%3Cpath d='M191 260Q185 282 176 303' stroke-width='2.8'/%3E%3Cpath d='M176 303Q172 319 173 335' stroke-width='1.9'/%3E%3Cpath d='M176 303Q161 313 152 329' stroke-width='1.9'/%3E%3Cpath d='M150 118Q125 154 106 193' stroke-width='6.1'/%3E%3Cpath d='M106 193Q103 225 104 257' stroke-width='4.2'/%3E%3Cpath d='M104 257Q114 279 120 302' stroke-width='2.8'/%3E%3Cpath d='M120 302Q135 313 146 330' stroke-width='1.9'/%3E%3Cpath d='M120 302Q122 321 124 339' stroke-width='1.9'/%3E%3Cpath d='M104 257Q98 282 92 306' stroke-width='2.8'/%3E%3Cpath d='M92 306Q97 323 97 341' stroke-width='1.9'/%3E%3Cpath d='M92 306Q86 323 75 339' stroke-width='1.9'/%3E%3Cpath d='M106 193Q78 206 56 228' stroke-width='4.2'/%3E%3Cpath d='M56 228Q46 249 28 264' stroke-width='2.8'/%3E%3Cpath d='M28 264Q20 280 16 297' stroke-width='1.9'/%3E%3Cpath d='M28 264Q12 271 -1 283' stroke-width='1.9'/%3E%3Cpath d='M56 228Q38 242 17 251' stroke-width='2.8'/%3E%3Cpath d='M17 251Q6 264 -4 279' stroke-width='1.9'/%3E%3Cpath d='M17 251Q3 258 -11 267' stroke-width='1.9'/%3E%3C/g%3E%3Cg stroke='%234a3828' stroke-opacity='.38' stroke-width='.7'%3E%3Cpath d='M150 -6Q158 55 150 118' transform='translate(2.2 0)'/%3E%3Cpath d='M150 118Q172 156 188 196' transform='translate(1.5 0)'/%3E%3Cpath d='M188 196Q213 218 243 235' transform='translate(1.0 0)'/%3E%3Cpath d='M188 196Q195 227 191 260' transform='translate(1.0 0)'/%3E%3Cpath d='M150 118Q125 154 106 193' transform='translate(1.5 0)'/%3E%3Cpath d='M106 193Q103 225 104 257' transform='translate(1.0 0)'/%3E%3Cpath d='M106 193Q78 206 56 228' transform='translate(1.0 0)'/%3E%3C/g%3E%3Ccircle cx='150.0' cy='49.8' r='2.4' fill='%234a3828' stroke='none'/%3E%3Cpath d='M150.0 49.8L269 44H331' stroke='%234a3828' stroke-width='.9'/%3E%3Ccircle cx='140.6' cy='93.2' r='2.4' fill='%234a3828' stroke='none'/%3E%3Cpath d='M140.6 93.2L269 96H331' stroke='%234a3828' stroke-width='.9'/%3E%3Ccircle cx='159.4' cy='115.5' r='2.4' fill='%234a3828' stroke='none'/%3E%3Cpath d='M159.4 115.5L269 150H331' stroke='%234a3828' stroke-width='.9'/%3E%3C/svg%3E");
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-fabrica.px-slide,
+.deck-theme-fabrica .px-slide { --fa-ink: #2a1f17; --fa-text: #3b2f26; --fa-muted: #74655a; --fa-pale: #b9ab95; --fa-rule: #cdbfa8; --fa-frame: #8c7a66; --fa-red: #a8322a; --fa-blue: #2c5a85; --fa-yellow: #d9a93a; --fa-card: #fbf7ef; --fa-wash: #efe6d4; }
+.deck-theme-fabrica.px-slide[data-own-background],
+.deck-theme-fabrica .px-slide[data-own-background] { --fa-ink: var(--px-text); --fa-text: var(--px-text); --fa-muted: var(--px-text); --fa-pale: var(--px-text); --fa-rule: var(--px-text); --fa-frame: var(--px-text); --fa-red: var(--px-text); --fa-blue: var(--px-text); --fa-card: transparent; --fa-wash: transparent; }
+
+/* A plate: the double rule inside the slide's edge. Not on blank slides,
+   which are often filled edge to edge, or slides with a background of their
+   own. */
+.deck-theme-fabrica.px-slide:not([data-layout=blank], [data-own-background])::before,
+.deck-theme-fabrica .px-slide:not([data-layout=blank], [data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  pointer-events: none;
+  border: 1.25px solid var(--fa-frame);
+  outline: 0.75px solid var(--fa-frame);
+  outline-offset: -5px;
+  opacity: 0.75;
+}
+/* With a footer, the plate ends above it, and the footer is its caption */
+.deck-theme-fabrica.px-slide:not([data-layout=blank], [data-own-background]):has(.px-footer)::before,
+.deck-theme-fabrica .px-slide:not([data-layout=blank], [data-own-background]):has(.px-footer)::before { bottom: 34px; }
+
+/* Headings: EB Garamond, a touch tight */
+.deck-theme-fabrica .px-text :is(h1, h2, h3) { letter-spacing: -0.005em !important; line-height: 1.08; }
+.deck-theme-fabrica .px-text :is(h1, h2, h3) em { color: var(--fa-red); }
+
+/* Slide titles: a short red rule under them, over a hairline. Not on the
+   title slide, section slides, Big Numbers or blank ones. */
+.deck-theme-fabrica.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after,
+.deck-theme-fabrica .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 0;
+  margin-top: 0.26em;
+  border-top: 3px solid var(--fa-red);
+  box-shadow: 0 4px 0 -3px var(--fa-red);
+}
+.deck-theme-fabrica .px-text h1[style*=center]:last-child::after,
+.deck-theme-fabrica .px-text h2[style*=center]:last-child::after { margin-inline: auto; }
+
+/* The title slide: the frontispiece. The title at the left in Garamond at
+   2.3 times the text size, a red rule and the subtitle in italic under it;
+   the engraving at the right. (Widths in percent, so text that shrinks to
+   fit still gets its room.) */
+.deck-theme-fabrica.px-slide[data-layout=title]:not([data-own-background])::after,
+.deck-theme-fabrica .px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  right: 40px;
+  top: 14px;
+  width: 330px;
+  height: 420px;
+  pointer-events: none;
+  background: var(--fa-figure) 50% 0 / contain no-repeat;
+}
+.deck-theme-fabrica.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-fabrica .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 60%;
+  text-align: left !important;
+  font-size: 2.3em;
+  line-height: 1.02;
+}
+.deck-theme-fabrica.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-fabrica .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 64px;
+  margin-top: 0.3em;
+  border-top: 3px solid var(--fa-red);
+  box-shadow: 0 4px 0 -3px var(--fa-red);
+}
+.deck-theme-fabrica.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)[style*=center]::after,
+.deck-theme-fabrica .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: 0; }
+.deck-theme-fabrica.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-fabrica .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 60%; text-align: left !important; }
+.deck-theme-fabrica.px-slide[data-layout=title] [data-placeholder=subtitle] p:first-child,
+.deck-theme-fabrica .px-slide[data-layout=title] [data-placeholder=subtitle] p:first-child { font-family: 'EB Garamond', Georgia, serif; font-size: 1.12em; font-style: italic; line-height: 1.3; }
+.deck-theme-fabrica.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-fabrica .px-slide[data-layout=title] [data-placeholder=subtitle] p + p { margin-top: 0.6em !important; font-size: 0.6em; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+
+/* Section slides: a deeper vellum (the plate's rule filled, its shadow
+   taking the color to the edge); a leader's dot and hairline over the title */
+.deck-theme-fabrica.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-fabrica .px-slide[data-layout=section-header]:not([data-own-background])::before { background: #ece2cf; box-shadow: 0 0 0 14px #ece2cf; }
+.deck-theme-fabrica.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-fabrica .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: block;
+  width: 120px;
+  height: 9px;
+  margin: 0 auto 0.4em;
+  background:
+    radial-gradient(circle, var(--fa-red) 0 4px, transparent 4.5px) 50% 50% / 9px 9px no-repeat,
+    linear-gradient(var(--fa-frame), var(--fa-frame)) 50% 50% / 100% 1px no-repeat;
+}
+.deck-theme-fabrica.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before,
+.deck-theme-fabrica .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before { margin-left: 0; }
+
+/* Subtitles: muted */
+.deck-theme-fabrica [data-placeholder=subtitle] :is(p, li) { color: var(--fa-muted) !important; }
+
+/* Body text: room between lines and between items, bold words in ink */
+.deck-theme-fabrica .px-text :is(p, li) { line-height: 1.32; }
+.deck-theme-fabrica .px-text strong { color: var(--fa-ink); font-weight: 700; }
+
+/* A Heading 4: a figure label in spaced capitals, a hairline after it */
+.deck-theme-fabrica .px-text h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.8em;
+  margin: 0 0 0.5em !important;
+  color: var(--fa-red) !important;
+  font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 0.52em;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-fabrica .px-text h4::after { content: ""; flex: 1; border-top: 1px solid var(--fa-rule); }
+.deck-theme-fabrica .px-text h4[style*=center]::before { content: ""; flex: 1; border-top: 1px solid var(--fa-rule); }
+
+/* A Heading 6: a structure's Latin name, in italic Garamond */
+.deck-theme-fabrica .px-text h6 {
+  margin: 0.1em 0 0.3em !important;
+  color: var(--fa-muted) !important;
+  font-family: 'EB Garamond', Georgia, serif !important;
+  font-size: 0.8em;
+  font-style: italic;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+  line-height: 1.3;
+  text-transform: none !important;
+}
+
+/* Bullets: label leaders, a hairline to a red dot; then open dots, then a
+   hairline alone */
+.deck-theme-fabrica .px-text :is(ul, ol) { display: block; }
+.deck-theme-fabrica .px-text ul { list-style: none; padding-left: 1.15em; }
+.deck-theme-fabrica .px-text :is(ul, ol) > li { position: relative; }
+.deck-theme-fabrica .px-text :is(ul, ol) > li + li { margin-top: 0.42em; }
+.deck-theme-fabrica .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -1.08em;
+  top: 0.66em;
+  width: 0.62em;
+  border-top: 0.05em solid var(--fa-frame);
+}
+.deck-theme-fabrica .px-text ul > li::after {
+  content: "";
+  position: absolute;
+  left: -0.5em;
+  top: 0.53em;
+  width: 0.28em;
+  height: 0.28em;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: var(--fa-red);
+}
+.deck-theme-fabrica .px-text ul ul > li::after { background: transparent; border: 0.06em solid var(--fa-red); }
+.deck-theme-fabrica .px-text ul ul ul > li::after { display: none; }
+/* A bullet's bold first words on a line of their own: its label, in red
+   capitals over the rest */
+.deck-theme-fabrica .px-text li > p > strong:first-child:has(+ br) {
+  display: block;
+  color: var(--fa-red);
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+.deck-theme-fabrica .px-text li > p > strong:first-child:has(+ br) + br { display: none; }
+.deck-theme-fabrica .px-text ul > li:has(> p > strong:first-child + br)::before { top: 0.5em; }
+.deck-theme-fabrica .px-text ul > li:has(> p > strong:first-child + br)::after { top: 0.37em; }
+
+/* Numbered lists: the plate's key, numbers in italic red Garamond */
+.deck-theme-fabrica .px-text ol { list-style: none; padding-left: 1.5em; }
+.deck-theme-fabrica .px-text ol > li { list-style: none; }
+.deck-theme-fabrica .px-text ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: -1.3em;
+  top: -0.02em;
+  min-width: 0.9em;
+  color: var(--fa-red);
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 1.08em;
+  font-style: italic;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: lining-nums;
+}
+
+/* Links: vein blue */
+.deck-theme-fabrica .px-text a { color: var(--fa-blue) !important; text-decoration-thickness: 0.05em; text-underline-offset: 0.16em; }
+
+/* Inline code: a tag on a darker vellum */
+.deck-theme-fabrica .px-text :not(pre) > code {
+  padding: 0.04em 0.34em 0.08em;
+  border-radius: 2px;
+  background: var(--fa-wash) !important;
+  color: var(--fa-ink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.8em;
+}
+.deck-theme-fabrica.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-fabrica .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; color: var(--px-text); outline: 0.06em solid var(--px-text); }
+
+/* Quotes: a clinical note, a card with a red rule down its left; bold
+   first words are its label */
+.deck-theme-fabrica .px-text blockquote {
+  margin: 0.5em 0 0.6em !important;
+  padding: 0.65em 0.9em 0.7em !important;
+  border: 1px solid var(--fa-rule) !important;
+  border-left: 0.2em solid var(--fa-red) !important;
+  border-radius: 0 !important;
+  background: var(--fa-card) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  color: var(--fa-ink);
+  font-style: normal;
+}
+.deck-theme-fabrica .px-text blockquote :is(p, li) { color: var(--fa-ink) !important; line-height: 1.38; }
+.deck-theme-fabrica .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.3em;
+  color: var(--fa-red);
+  font-size: 0.6em;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.deck-theme-fabrica .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+
+/* Code: vellum, in the theme's inks whichever code theme the deck uses */
+.deck-theme-fabrica :is(pre, pre.hljs) {
+  background: var(--fa-wash, #efe6d4) !important;
+  color: #2a1f17;
+  border: 1px solid #cdbfa8;
+  border-left: 3px solid #2c5a85;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.deck-theme-fabrica :is(pre.hljs, pre code, pre) { font-family: 'JetBrains Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-fabrica pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-fabrica .px-text pre { padding: 0.6em 0.8em !important; font-size: 0.6em; line-height: 1.55; }
+.deck-theme-fabrica pre [class*=hljs-] { color: #2a1f17; font-style: normal; font-weight: 400; }
+.deck-theme-fabrica pre :is(.hljs-comment, .hljs-quote) { color: #74655a; font-style: italic; }
+.deck-theme-fabrica pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #a8322a; }
+.deck-theme-fabrica pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #2c5a85; }
+.deck-theme-fabrica pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #8a6510; }
+.deck-theme-fabrica pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-title.function_, .hljs-attr) { color: #2a1f17; font-weight: 600; }
+.deck-theme-fabrica pre :is(.hljs-meta, .hljs-deletion) { color: #74655a; }
+
+/* Tables: the plate's key. The header in spaced capitals over a double
+   rule, rows ruled, the first column in Garamond. */
+.deck-theme-fabrica table { border: 0 !important; border-collapse: collapse; background: transparent; }
+.deck-theme-fabrica table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--fa-rule) !important;
+  background: transparent !important;
+  color: var(--fa-text) !important;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-fabrica table tr:first-child :is(td, th) {
+  border-bottom: 3px double var(--fa-frame) !important;
+  color: var(--fa-red) !important;
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.deck-theme-fabrica table tr:not(:first-child) :is(td, th):first-child { color: var(--fa-ink) !important; font-family: 'EB Garamond', Georgia, serif; font-size: 1.16em; font-weight: 600; }
+.deck-theme-fabrica.px-slide[data-own-background] table :is(td, th),
+.deck-theme-fabrica .px-slide[data-own-background] table :is(td, th) { color: var(--px-text) !important; border-color: var(--px-text) !important; }
+
+/* The Big Number: red Garamond, its unit (inline code or italic words in
+   it) in muted italic */
+.deck-theme-fabrica.px-slide[data-layout=big-number] [data-placeholder=title] h1,
+.deck-theme-fabrica .px-slide[data-layout=big-number] [data-placeholder=title] h1 {
+  color: var(--fa-red) !important;
+  font-weight: 600;
+  letter-spacing: -0.02em !important;
+  line-height: 1;
+  font-variant-numeric: lining-nums;
+}
+.deck-theme-fabrica.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-fabrica .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  margin-left: 0.08em;
+  padding: 0 !important;
+  background: none !important;
+  color: var(--fa-muted);
+  font-family: inherit !important;
+  font-size: 0.42em;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* The footer: spaced capitals, the page number a plate's. With its
+   sections in sequence: done ones in ink, the current one red with a dot,
+   those to come pale. (The class and the slide both named, to outweigh
+   the presented deck's footer rules.) */
+.deck-theme-fabrica.px-slide .px-footer,
+.deck-theme-fabrica .px-slide .px-footer { padding-inline: 30px !important; color: var(--fa-muted) !important; }
+.deck-theme-fabrica.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-fabrica .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--fa-muted) !important;
+  font-family: 'Source Sans 3', 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-fabrica.px-slide .px-footer .px-footer-page:not(:empty)::before,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-page:not(:empty)::before { content: "Plate "; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-page,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-page { color: var(--fa-ink) !important; font-variant-numeric: tabular-nums; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-sections,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 18px; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-section,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-section { display: inline-flex; align-items: center; gap: 6px; color: var(--fa-pale) !important; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-section::before,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-section::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; box-sizing: border-box; border: 1px solid currentColor; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-fabrica .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--fa-ink) !important; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-fabrica .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--fa-red) !important; }
+.deck-theme-fabrica.px-slide .px-footer .px-footer-section[data-state=current]::before,
+.deck-theme-fabrica .px-slide .px-footer .px-footer-section[data-state=current]::before { background: currentColor; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the bundle's three cables under the title */
+.deck-theme-fabrica .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 9px;
+  margin: 5px auto 0;
+  background: linear-gradient(#2c5a85 0 3px, #d9a93a 3px 6px, #a8322a 6px);
+  border-block: 0.5px solid #4a3828;
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default, downforce: downforce_default, parallax: parallax_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default, downforce: downforce_default, parallax: parallax_default, fabrica: fabrica_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -38279,7 +38679,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
