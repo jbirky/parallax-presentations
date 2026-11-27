@@ -11,7 +11,7 @@ import { formatSize, planSummary, priceText, discountedPrice, discountText } fro
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
-import ParallaxMark from '../components/ParallaxMark'
+import { Wordmark } from '../components/ParallaxMark'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
 import TeamSpaceView from '../components/TeamSpaceView'
@@ -637,7 +637,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     <div className="home-page">
       <div className="home-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h1 className="home-logo"><ParallaxMark id="home" size={28} ink="var(--text-primary)" /><span>Parallax</span><BetaBadge /></h1>
+          <h1 className="home-logo"><Wordmark id="home" ink="var(--text-primary)" /><BetaBadge /></h1>
           <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" className="home-link">
             <ExternalLink size={12} /> Site
           </a>

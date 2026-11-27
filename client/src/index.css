@@ -110,6 +110,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* The dashboard's file browser (components/DeckBrowser.jsx) */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* The wordmark (components/ParallaxMark.jsx Wordmark): the mark as the P of
+   "Parallax", a capital's height (0.69em of Archivo) on the baseline, then
+   "arallax". Its size is the font size. */
+.px-wordmark { display: inline-flex; align-items: baseline; white-space: nowrap; font-family: 'Archivo', 'Inter', sans-serif; font-weight: 800; line-height: 1; letter-spacing: -0.035em; }
+.px-wordmark-p { display: block; flex: none; width: 0.69em; height: 0.69em; margin-right: 0.05em; }
 .deck-browser-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
 .deck-browser-bar h2 { margin: 0; }
 .deck-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; margin-left: -9px; }
@@ -193,6 +198,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .home-page .home-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); }
 .home-page .home-logo svg { display: block; flex: none; }
 .home-page .home-logo span { color: inherit; }
+.home-page .home-logo .px-wordmark { font-size: 26px; font-family: var(--hp-display); }
 .home-page .home-logo .beta-badge { margin: 0; padding: 3px 6px; vertical-align: baseline; font: 700 10.5px/1.2 'Inter', sans-serif; letter-spacing: 0.1em; color: var(--bg-primary); background: var(--text-primary); border: 0; border-radius: 0; }
 .home-link { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); transition: color 0.15s, border-color 0.15s; }
 .home-link:hover { color: var(--text-primary); border-color: var(--text-primary); }
@@ -248,6 +254,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 [data-theme="light"] .admin-header { background: var(--bg-secondary); }
 .admin-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); text-decoration: none; }
 .admin-logo svg { display: block; flex: none; }
+.admin-logo .px-wordmark { font-size: 26px; font-family: var(--hp-display); }
 .admin-header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 12px; color: var(--text-muted); }
 .admin-header-tools .btn { padding: 7px 12px; white-space: nowrap; text-decoration: none; }
 .admin-intro { display: grid; gap: 10px; padding-top: clamp(28px, 4vw, 48px); }
@@ -915,7 +922,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
 .lp-logo { display: inline-flex; align-items: center; gap: 10px; color: var(--lp-strong); white-space: nowrap; }
 .lp-mark { display: block; flex: none; }
-.lp-word { font: 800 23px/1 var(--lp-display); letter-spacing: -0.035em; }
+.lp-logo .px-wordmark { font-size: 28px; font-family: var(--lp-display); }
 .landing-page .lp-logo .beta-badge { margin: 0; padding: 3px 6px; vertical-align: baseline; transform: none; font: 700 10.5px/1.2 var(--lp-sans); letter-spacing: 0.1em; color: var(--lp-bg); background: var(--lp-strong); border: 0; border-radius: 0; }
 .lp-links { display: flex; align-items: center; gap: 2px; }
 .lp-links > button, .lp-links > a { padding: 12px 10px; color: var(--lp-strong); font-size: 14.5px; font-weight: 500; text-decoration: none; text-underline-offset: 7px; text-decoration-thickness: 2px; white-space: nowrap; }
@@ -927,21 +934,19 @@ sup[data-cite] { font-weight: 700; }
 @media (max-width: 860px) { .lp-links .lp-wide { display: none; } }
 @media (max-width: 520px) {
   .lp-links .lp-mid, .lp-nav .lp-logo .beta-badge { display: none; }
-  .lp-nav .lp-mark { width: 28px; height: 28px; }
-  .lp-nav .lp-word { font-size: 20px; }
+  .lp-nav .px-wordmark { font-size: 25px; }
   .lp-links > button, .lp-links > a { padding-inline: 7px; }
   .lp-links > .lp-signin { margin-left: 4px; padding-inline: 12px; }
 }
 @media (max-width: 420px) {
   .lp-nav-row, .lp-logo { gap: 8px; }
-  .lp-nav .lp-mark { width: 26px; height: 26px; }
-  .lp-nav .lp-word { font-size: 19px; }
+  .lp-nav .px-wordmark { font-size: 23px; }
   .lp-links > button, .lp-links > a { padding-inline: 6px; font-size: 14px; }
   .lp-links > .lp-signin { margin-left: 2px; padding-inline: 10px; }
 }
 @media (max-width: 370px) { .lp-links > button, .lp-links > a { padding-inline: 5px; } .lp-links > .lp-signin { padding-inline: 8px; } }
 /* The smallest phones: the mark alone (the button's label still says Parallax) */
-@media (max-width: 340px) { .lp-nav .lp-word { display: none; } }
+@media (max-width: 340px) { .lp-nav .lp-word { display: none; } .lp-nav .px-wordmark-p { width: 24px; height: 24px; margin: 0; } }
 
 /* Hero */
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
@@ -1396,7 +1401,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-footer { padding-block: 64px 48px; background: var(--lp-bg); color: var(--lp-faint); border-top: 1px solid var(--lp-line); font-size: 14px; }
 .lp-footer-cols { display: grid; grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr)); gap: 40px; }
 .lp-footer-cols > div:first-child p { margin-top: 14px; max-width: 36ch; line-height: 1.55; }
-.lp-footer .lp-word { font-size: 20px; }
+.lp-footer .px-wordmark { font-size: 24px; }
 .lp-footer h4 { margin-bottom: 12px; font: 600 12px var(--lp-sans); letter-spacing: 0.15em; text-transform: uppercase; color: var(--lp-strong); }
 .lp-footer ul { list-style: none; display: grid; gap: 4px; }
 .lp-footer ul a, .lp-footer ul button { display: inline-block; padding: 6px 0; color: var(--lp-text); text-decoration: none; font-size: 14px; }

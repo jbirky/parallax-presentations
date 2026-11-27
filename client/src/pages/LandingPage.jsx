@@ -22,7 +22,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
-import Mark from '../components/ParallaxMark'
+import Mark, { Wordmark } from '../components/ParallaxMark'
 import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
@@ -230,7 +230,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     <div className="landing-page">
       <nav className="lp-nav" aria-label="Main">
         <div className="lp-wrap lp-nav-row">
-          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="nav" size={32} /><span className="lp-word">Parallax</span><BetaBadge /></button>
+          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Wordmark id="nav" wordClass="lp-word" /><BetaBadge /></button>
           <div className="lp-links">
             <button type="button" className="lp-wide" onClick={() => goTo('features')}>Features</button>
             {/* On a phone, Templates takes its place; the hero's See the examples leads there */}
@@ -440,7 +440,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-footer-cols">
                 <div>
-                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="footer" size={30} /><span className="lp-word">Parallax</span><BetaBadge /></button>
+                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Wordmark id="footer" wordClass="lp-word" /><BetaBadge /></button>
                   <p>Parallax is in beta, so features may change. Tell us what breaks and what you’d like next.</p>
                 </div>
                 <div><h4>Product</h4><ul>

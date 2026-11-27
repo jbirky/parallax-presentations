@@ -12,6 +12,10 @@ import usePointerDepth from '../utils/usePointerDepth'
 // `moving`: the red and blue P's shift against the pointer, the red (farther
 // back) by twice the blue, and the overlap follows them (the landing page's
 // closing mark, like the fringed words above it).
+//
+// `letter`: drawn as the P of the wordmark (Wordmark, below): the box fits
+// the glyphs exactly, so at a capital's height (0.69em of Archivo) on the
+// baseline it reads as the word's first letter.
 
 const P_PATH = 'M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z'
 const RED = -6, BLUE = 6
@@ -26,11 +30,11 @@ const shiftEyes = (svg, x, y) => {
   }
 }
 
-export default function ParallaxMark({ id, size, className = 'lp-mark', ink = 'var(--lp-strong)', moving = false }) {
+export default function ParallaxMark({ id, size, className = 'lp-mark', ink = 'var(--lp-strong)', moving = false, letter = false }) {
   const ref = useRef(null)
   usePointerDepth(ref, shiftEyes, moving)
   return (
-    <svg ref={ref} className={className} width={size} height={size} viewBox="14 14 72 72" aria-hidden="true" focusable="false">
+    <svg ref={ref} className={className} width={size} height={size} viewBox={letter ? '18 18 64 64' : '14 14 72 72'} aria-hidden="true" focusable="false">
       <defs><clipPath id={`lp-mark-${id}`}><path data-eye="red" d={P_PATH} transform={`translate(${RED} 0)`} clipRule="evenodd" /></clipPath></defs>
       <g transform="translate(-2 0)" fillRule="evenodd">
         <path data-eye="red" d={P_PATH} transform={`translate(${RED} 0)`} fill="#ee2b2b" />
@@ -38,5 +42,17 @@ export default function ParallaxMark({ id, size, className = 'lp-mark', ink = 'v
         <g clipPath={`url(#lp-mark-${id})`}><path data-eye="blue" d={P_PATH} transform={`translate(${BLUE} 0)`} style={{ fill: ink }} /></g>
       </g>
     </svg>
+  )
+}
+
+// The wordmark: the mark as the P of "Parallax", then "arallax", in Archivo
+// at its heaviest (.px-wordmark in index.css; its size is the font size).
+// Screen readers and copying get "Parallax".
+export function Wordmark({ id, ink, wordClass = '' }) {
+  return (
+    <span className="px-wordmark">
+      <ParallaxMark id={id} ink={ink} letter className="px-wordmark-p" />
+      <span className={`px-wordmark-word ${wordClass}`.trim()}><span className="sr-only">P</span>arallax</span>
+    </span>
   )
 }
