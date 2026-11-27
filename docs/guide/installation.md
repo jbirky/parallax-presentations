@@ -65,8 +65,8 @@ Go to the [Releases page](https://github.com/jbirky/parallax-presentations/relea
 |---|---|
 | Linux (Debian/Ubuntu) | `parallax_x.x.x_amd64.deb` |
 | Linux (AppImage) | `Parallax-x.x.x-x86_64.AppImage` |
-| macOS | `Parallax-x.x.x.dmg` |
-| Windows | `Parallax Setup x.x.x.exe` |
+| macOS (Apple silicon) | `Parallax-x.x.x-arm64.dmg` |
+| Windows | `Parallax.Setup.x.x.x.exe` |
 
 ### Linux .deb
 
@@ -88,6 +88,16 @@ chmod +x Parallax-*.AppImage
 ::: warning Ubuntu 24.04 and later
 The app runs every page in Chromium's sandbox, since a deck can run its author's code. On Ubuntu 24.04 and later the sandbox needs an AppArmor profile, which the .deb installs and an AppImage can't, so there the AppImage stops at startup. Install the .deb instead.
 :::
+
+### macOS
+
+Open the .dmg and drag Parallax to Applications. The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says it can't check it for malware. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Parallax, and click **Open Anyway**. After that it opens normally.
+
+The download is for Macs with Apple silicon (M1 and later).
+
+### Windows
+
+Run the installer. It isn't signed with a code-signing certificate yet, so Windows SmartScreen may warn that it doesn't recognize the app: click **More info**, then **Run anyway**.
 
 ::: tip
 On first launch the desktop app will open both the editor window and a local server on port 3002. You can also access the editor from a browser at `http://localhost:3002`.
