@@ -16,6 +16,12 @@ const SUPPORT = 'support@parallax-presentations.com'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
+// What a frame around a deck page lets it do. The deck page is sandboxed
+// (DECK_PAGE_SANDBOX in index.js), so its origin is opaque, and a bare
+// "fullscreen" grants only the frame's src origin, which that never
+// matches: its Fullscreen button was refused. "*" reaches it.
+const DECK_FRAME_ALLOW = 'fullscreen *'
+
 // Words an admin typed, ending as a sentence does, to go before another
 const sentence = s => (/[.!?…]['’"”)]?$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
 
@@ -304,7 +310,7 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
       <h1>${esc(e.title)}</h1>
       ${e.desc ? `<p class="lead">${esc(e.desc)}</p>` : ''}
       ${e.tags?.length ? `<div class="tags">${e.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
-      <div class="stage"><div class="slide" id="slide"><iframe src="/examples/${esc(e.slug)}/deck" title="${esc(e.title)}, a live Parallax deck" allow="fullscreen"></iframe></div></div>
+      <div class="stage"><div class="slide" id="slide"><iframe src="/examples/${esc(e.slug)}/deck" title="${esc(e.title)}, a live Parallax deck" allow="${DECK_FRAME_ALLOW}"></iframe></div></div>
       <p class="hint">A live deck, as it’s presented. Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
       <div class="actions">
         ${editor}
@@ -410,7 +416,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       ${t.tags?.length ? `<div class="tags">${t.tags.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
       <div class="tp-layout">
         <div class="tp-main">
-          <div class="stage"><div class="slide" id="slide"><iframe id="deck" src="/examples/${slug}/deck" title="${esc(t.title)}, a live Parallax deck" allow="fullscreen"></iframe></div></div>
+          <div class="stage"><div class="slide" id="slide"><iframe id="deck" src="/examples/${slug}/deck" title="${esc(t.title)}, a live Parallax deck" allow="${DECK_FRAME_ALLOW}"></iframe></div></div>
           <div class="tp-controls">
             <button type="button" class="btn" id="tp-prev">← Back</button>
             <div class="tp-where" aria-live="polite"><span id="tp-num">1 / ${slides.length}</span><span id="tp-name">${esc(slides[0]?.title || '')}</span></div>

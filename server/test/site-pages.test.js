@@ -50,6 +50,8 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/venn\.jpg" \/>/)
     assert.match(html, /<meta property="og:image:width" content="960" \/>/)
     assert.match(html, /<iframe src="\/examples\/venn\/deck"/)
+    // The deck page is sandboxed (an opaque origin): only "*" lets its Fullscreen button work
+    assert.match(html, /<iframe src="\/examples\/venn\/deck"[^>]* allow="fullscreen \*"/)
     assert.match(html, /<a class="btn primary" href="\/try\?example=venn" data-umami-event="example-to-editor"/)
     assert.match(html, /<script defer src="\/stats\/script\.js" data-website-id="w-1" data-do-not-track="true"><\/script>/)
     // Another example without a thumbnail shows its title
@@ -74,6 +76,7 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<link rel="canonical" href="https:\/\/parallax-presentations\.com\/templates\/lecture" \/>/)
     assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/lecture\.jpg" \/>/)
     assert.match(html, /<iframe id="deck" src="\/examples\/lecture\/deck"/)
+    assert.match(html, /<iframe id="deck" src="\/examples\/lecture\/deck"[^>]* allow="fullscreen \*"/)
     assert.match(html, /<a class="btn primary" href="\/templates\/lecture\/use" data-umami-event="template-to-account"/)
     assert.match(html, /href="\/try\?example=lecture"/)
     // Every slide, to jump to, on its own color until it's drawn

@@ -22,5 +22,8 @@ export default function SlideFrame({ src, title }) {
     observer.observe(box)
     return () => observer.disconnect()
   }, [])
-  return <div className="lp-slide" ref={ref}><iframe src={src} title={title} allow="fullscreen" /></div>
+  // The deck page is sandboxed, so its origin is opaque: a bare
+  // "fullscreen" (the frame's src origin only) would refuse its Fullscreen
+  // button (server/services/site-pages.js, DECK_FRAME_ALLOW)
+  return <div className="lp-slide" ref={ref}><iframe src={src} title={title} allow="fullscreen *" /></div>
 }
