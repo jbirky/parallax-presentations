@@ -42,6 +42,7 @@ const teamSpace = require('./services/team-space')
 const folders = require('./services/folders')
 const teamLibrary = require('./services/team-library')
 const aiLinks = require('./services/ai-links')
+const aiTokens = require('./services/ai-tokens')
 const { createMcpRoute } = require('./mcp')
 const { deckAccess: deckAccessFor, ownerOnly, canEdit, canCopy } = collaboration
 const deckLocks = require('./services/deck-locks')
@@ -58,7 +59,7 @@ const { renewSlideIds } = require('./services/click-actions')
 const deckHtml = require('./services/deck-html')
 const { deckDataFor } = require('./services/deck-data')
 const {
-  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, mcpLinkLimiter, mcpMissLimiter, statsLimiter, localOnly, listenHost,
+  corsConfig, helmetConfig, apiLimiter, uploadLimiter, sourceFetchLimiter, pluginImportLimiter, authLimiter, deckPageLimiter, mcpLinkLimiter, mcpMissLimiter, mcpTokenLimiter, statsLimiter, localOnly, listenHost,
   requireValidId, requireValidSlug, requireValidSHA, validateUpload, isValidUUID,
   safeErrorMessage, PUBLIC_ORIGIN,
 } = require('./middleware/security')
@@ -139,7 +140,7 @@ if (!IS_CLOUD) app.use(localOnly())
 // cookie (a browser-based MCP client calls them from its own origin), and
 // their viewer's preview pages, which it fetches to draw where it can't
 // frame them (server/mcp/viewer.js).
-const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp|ai-preview)\/|^\/api\/live\/[^/]+\/(stream|status)$/
+const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp|ai-preview)\/|^\/mcp$|^\/api\/live\/[^/]+\/(stream|status)$/
 const publicCors = cors()
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
@@ -215,6 +216,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Drawing on Slides', link: 'tutorials/drawing-on-slides' },
       { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'AI Collaborators', link: 'tutorials/ai-collaborators' },
+      { text: 'AI Access', link: 'tutorials/ai-access' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
       { text: 'Feynman Diagrams', link: 'tutorials/feynman-diagrams' },
@@ -573,6 +575,10 @@ app.get('/api/plugins/:slug/manifest', async (req, res) => {
 // sites, where a redirect to Clerk (its handshake) is blocked, and it needs
 // no account. mcpRoute is made further down, before any request comes.
 app.get('/ai-preview/:token', deckPageLimiter, (req, res, next) => (mcpRoute ? mcpRoute.preview(req, res) : next()))
+// The account-level MCP server behind AI access tokens (server/mcp/account.js),
+// ahead of sign-in too: its token is the sign-in, sent as a Bearer header,
+// which Clerk would otherwise read as one of its own
+app.all('/mcp', mcpMissLimiter, mcpTokenLimiter, (req, res, next) => (mcpRoute ? mcpRoute.account(req, res) : next()))
 
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
 // In self-hosted mode, sets req.userId = null (no-op)
@@ -1177,6 +1183,42 @@ app.get('/api/presentations', async (req, res) => {
   }
 })
 
+// A new presentation with one slide, in the Title Slide layout, its
+// placeholders empty
+function blankPresentation({ title, theme, transition } = {}) {
+  const now = new Date().toISOString()
+  return {
+    id: uuidv4(),
+    title: title || 'Untitled Presentation',
+    theme: theme || 'black',
+    transition: transition || 'slide',
+    slides: [
+      {
+        id: uuidv4(),
+        // The editor's Title Slide layout (SLIDE_TEMPLATES.title in
+        // client/src/pages/EditorPage.jsx): empty placeholders, showing
+        // their hints and shrinking their text to fit, on the theme's
+        // background (no background of its own)
+        layout: 'title',
+        elements: [{
+          id: uuidv4(),
+          type: 'text', placeholder: 'title', sizeMode: 'shrink',
+          x: 60, y: 150, width: 840, height: 120, zIndex: 1,
+          content: '<h2 style="text-align:center"></h2>'
+        }, {
+          id: uuidv4(),
+          type: 'text', placeholder: 'subtitle', sizeMode: 'shrink',
+          x: 120, y: 282, width: 720, height: 80, zIndex: 2,
+          content: '<p style="text-align:center"></p>'
+        }],
+        notes: ''
+      }
+    ],
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
 // POST /api/presentations - create new (optionally from template)
 // With { teamId, folderId? }, it's made in that team (cloud only), for its
 // owner, admins and members; team decks don't count toward a personal plan.
@@ -1244,38 +1286,7 @@ app.post('/api/presentations', async (req, res) => {
       }
     }
 
-    if (!presentation) {
-      presentation = {
-        id: uuidv4(),
-        title: title || 'Untitled Presentation',
-        theme: theme || 'black',
-        transition: transition || 'slide',
-        slides: [
-          {
-            id: uuidv4(),
-            // The editor's Title Slide layout (SLIDE_TEMPLATES.title in
-            // client/src/pages/EditorPage.jsx): empty placeholders, showing
-            // their hints and shrinking their text to fit, on the theme's
-            // background (no background of its own)
-            layout: 'title',
-            elements: [{
-              id: uuidv4(),
-              type: 'text', placeholder: 'title', sizeMode: 'shrink',
-              x: 60, y: 150, width: 840, height: 120, zIndex: 1,
-              content: '<h2 style="text-align:center"></h2>'
-            }, {
-              id: uuidv4(),
-              type: 'text', placeholder: 'subtitle', sizeMode: 'shrink',
-              x: 120, y: 282, width: 720, height: 80, zIndex: 2,
-              content: '<p style="text-align:center"></p>'
-            }],
-            notes: ''
-          }
-        ],
-        createdAt: now,
-        updatedAt: now
-      }
-    }
+    if (!presentation) presentation = blankPresentation({ title, theme, transition })
 
     const created = await storage.createPresentation(presentation, req.userId)
     if (team) {
@@ -2428,7 +2439,7 @@ app.get('/api/presentations/:id/present', requireValidId(), deckAccess(), async 
 if (!IS_CLOUD) {
   app.use(['/share', '/live', '/api/live', '/api/presentations/:id/share', '/api/presentations/:id/live',
     '/api/invites', '/api/presentations/:id/collaborators', '/api/presentations/:id/invite',
-    '/api/presentations/:id/ai-links', '/mcp', '/ai-preview', '/api/landing-templates',
+    '/api/presentations/:id/ai-links', '/api/me/ai-tokens', '/mcp', '/ai-preview', '/api/landing-templates',
     '/api/teams', '/api/team-invites', '/api/admin/teams'],
     (req, res) => res.status(404).json({ error: 'Not available in the self-hosted version' }))
 }
@@ -2949,7 +2960,26 @@ app.delete('/api/admin/teams/:id', requireValidId(), adminTeamRoute(async (req, 
 // out of the avatars
 // An AI link's slides are drawn from the page a share link has
 const mcpDeckPage = async (deck, ownerId, opts = {}) => localizeLibraries(await generateRevealHTML(deck, { notes: false, deckData: await deckData(deck, ownerId), ...opts }))
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR }) : null
+// A presentation an AI access token makes (server/mcp/account.js): blank in
+// a theme, or one of the landing page's templates with copies of the
+// datasets it plots, as Use this template makes it. Null when there's no such
+// template.
+async function mcpCreateDeck({ userId, userPlan, title, theme, template }) {
+  if (!template) return storage.createPresentation(blankPresentation({ title, theme }), userId)
+  const found = EXAMPLE_SLUG.test(template) && await examples.templateToUse(storage, template)
+  if (!found) return null
+  const created = await storage.createPresentation({ ...found.deck, id: uuidv4(), title: title || found.title }, userId, null)
+  try {
+    await exampleData.copyExampleDatasets(storage, found.deck, {
+      userId, presentationId: created.id, localDir: DATA_DIR,
+      checkRoom: bytes => live.checkRoom(storage, userId, planFor(userPlan), bytes),
+    })
+  } catch (err) {
+    console.warn(`Template ${template} for an AI token: datasets not copied:`, err.message)
+  }
+  return created
+}
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
@@ -3007,6 +3037,47 @@ app.delete('/api/presentations/:id/ai-links/:linkId', requireValidId(), requireV
 
 // /mcp/:secret - the link itself: MCP for a connector, a page for a person
 if (mcpRoute) app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, mcpRoute)
+
+// --- AI access tokens (cloud only; services/ai-tokens.js, server/mcp/account.js) ---
+// A person's tokens for the account-level MCP server at /mcp, which an AI
+// agent such as Claude Code sends as a Bearer header. Each reaches every
+// presentation its person can open.
+const aiTokenMakers = (req, res, next) => (req.isGuest || !req.userId ? res.status(403).json({ error: 'Sign in to make AI access tokens' }) : next())
+
+// GET /api/me/ai-tokens - the person's tokens, without their secrets, and
+// the address an agent sends them to
+app.get('/api/me/ai-tokens', aiTokenMakers, async (req, res) => {
+  try {
+    res.json({ tokens: await aiTokens.listTokens(storage, req.userId), server: `${siteOrigin(req)}/mcp` })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// POST /api/me/ai-tokens { name, days, scopes } - a new token, with its
+// secret, which isn't given again; days is 30, 90 or 365
+app.post('/api/me/ai-tokens', aiTokenMakers, async (req, res) => {
+  try {
+    const { secret, ...token } = await aiTokens.createToken(storage, {
+      userId: req.userId, name: req.body?.name, days: req.body?.days, scopes: req.body?.scopes,
+    })
+    res.status(201).json({ ...token, secret, server: `${siteOrigin(req)}/mcp` })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// DELETE /api/me/ai-tokens/:tokenId - the token stops working, and leaves
+// the avatars
+app.delete('/api/me/ai-tokens/:tokenId', requireValidId('tokenId'), aiTokenMakers, async (req, res) => {
+  try {
+    if (!(await aiTokens.revokeToken(storage, req.userId, req.params.tokenId))) return res.status(404).json({ error: 'No such AI access token' })
+    mcpRoute?.leave(req.params.tokenId)
+    res.json({ success: true })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
 
 app.get('/share/:token', deckPageLimiter, requireValidId('token'), async (req, res) => {
   try {

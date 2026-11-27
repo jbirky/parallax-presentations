@@ -24,7 +24,6 @@
 // In apps that show MCP Apps, show_deck opens the deck viewer (viewer.js)
 // in the chat, which follows the AI's changes from /ai-preview/<token>.
 
-const { Readable } = require('stream')
 const { McpServer, createMcpHandler, fromJsonSchema } = require('@modelcontextprotocol/server')
 const { findLink, findLinkById } = require('../services/ai-links')
 const deckLocks = require('../services/deck-locks')
@@ -38,6 +37,8 @@ const thumbnails = require('../services/slide-thumbnail')
 const { datasetList } = require('./datasets')
 const guides = require('./guides')
 const viewer = require('./viewer')
+const { READ_ONLY, WRITE, DELETE, text, failure, guarded, serve, wantsStream } = require('./common')
+const { createAccountRoute } = require('./account')
 
 const GONE = "This AI collaborator link was revoked or has expired, or its presentation is gone. Ask the presentation's owner for a new link."
 const INSTRUCTIONS = [
@@ -56,11 +57,10 @@ const INSTRUCTIONS = [
 const SESSION_GAP_MS = 30 * 60 * 1000
 const KEEP_VERSIONS = 5
 
-const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
-const WRITE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
-const DELETE = { ...WRITE, destructiveHint: true }
-const NO_INPUT = fromJsonSchema({ type: 'object', properties: {}, additionalProperties: false })
-const SLIDE_INPUT = fromJsonSchema({
+// Tools' inputs, as JSON Schema (fromJsonSchema makes them the SDK's when a
+// server registers them; account.js adds a deck to each)
+const NO_INPUT = { type: 'object', properties: {}, additionalProperties: false }
+const SLIDE_INPUT = ({
   type: 'object',
   properties: {
     slide: {
@@ -76,7 +76,7 @@ const SHOW_INPUT_SLIDE = {
   description: 'A slide to open at: its number as shown (1 is the first) or its id from get_deck. Leave out to open at the first slide.',
   anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', minLength: 1, maxLength: 100 }],
 }
-const SHOW_INPUT = fromJsonSchema({
+const SHOW_INPUT = ({
   type: 'object',
   properties: { slide: SHOW_INPUT_SLIDE },
   additionalProperties: false,
@@ -84,7 +84,7 @@ const SHOW_INPUT = fromJsonSchema({
 
 // deck_preview's: show_deck's, and once, for the server's log, how the
 // viewer showed the deck (deck-viewer.html's report)
-const PREVIEW_INPUT = fromJsonSchema({
+const PREVIEW_INPUT = ({
   type: 'object',
   properties: {
     slide: SHOW_INPUT_SLIDE,
@@ -94,13 +94,12 @@ const PREVIEW_INPUT = fromJsonSchema({
   additionalProperties: false,
 })
 
-const GUIDE_INPUT = fromJsonSchema({
+const GUIDE_INPUT = ({
   type: 'object',
   properties: { type: { type: 'string', enum: guides.TYPES, description: 'The element type; leave out to list them' } },
   additionalProperties: false,
 })
 
-const text = s => ({ content: [{ type: 'text', text: s }] })
 
 // How a link's viewer showed the deck in the app, and what the app said it
 // allows (deck-viewer.html's report), logged once a link while the server
@@ -123,17 +122,9 @@ function noteProbe(link, probe) {
   try { found = JSON.stringify(probe).slice(0, 8000) } catch { return }
   console.log(`[mcp viewer] link ${link.id.slice(0, 8)}: how the viewer showed the deck: ${found}`)
 }
-const failure = s => ({ content: [{ type: 'text', text: s }], isError: true })
-
-// A tool's work, with the server's own errors logged and not shown
-const guarded = (name, work) => async (...args) => {
-  try {
-    return await work(...args)
-  } catch (err) {
-    console.error(`AI link tool ${name} failed:`, err.message)
-    return failure('Something went wrong on the Parallax server, so that may not have worked. Read the presentation again to check before trying again.')
-  }
-}
+// What a tool says when its presentation is gone: for a link, that the link
+// stopped working; for a token, link.gone (account.js)
+const goneOf = link => link.gone || GONE
 
 // The write tools: one per operation in edits.js, and apply_edits for
 // several at once
@@ -149,7 +140,7 @@ const WRITE_TOOLS = [
   ['update_outline', "Change a slide's outline notes", "Change a slide's outline notes (planning notes for the talk, which never show on the slide), its planned minutes, or its section. Never changes what's on the slide."],
   ['import_beamer', 'Add slides from LaTeX Beamer', "Turn LaTeX Beamer source into slides, as the editor's Beamer import does: each frame a slide, with its title, text, math, lists, columns, tables, blocks, code, overlays as steps, and speaker notes from \\note. Give BibTeX for what it cites, and its references join the bibliography. Figures can't come along: they show as empty boxes for the person to fill. Good for a talk you've drafted in LaTeX, or for a person's existing Beamer slides."],
 ]
-const EDITS_INPUT = fromJsonSchema({
+const EDITS_INPUT = ({
   type: 'object',
   properties: {
     edits: {
@@ -175,84 +166,112 @@ const noSlide = (deck, slide) => {
   return failure(`There's no slide ${JSON.stringify(slide)}. The presentation has ${count} slide${count === 1 ? '' : 's'}: give a number from 1 to ${count}, or an id from get_deck.`)
 }
 
-// The server for one request: the link's tools for its presentation.
-// loadDeck(link), write(link, edits), render(link, slide, local) and
-// preview(link, site, slide) do the work (createMcpRoute); local is this
-// server's address for its own renderer, and site the site's public origin.
-function buildServer(link, { loadDeck, write, touch, render, datasets, preview }, { local, site } = {}) {
-  const server = new McpServer({ name: 'parallax', title: 'Parallax', version: '1.0.0' }, { instructions: INSTRUCTIONS })
-  server.registerTool('get_deck', {
-    title: 'Read the presentation outline',
-    description: 'The outline of the presentation: its title, size, theme and font, and each slide in the order shown, with its number, id, title, layout, minutes, the kinds of elements on it, and its outline and speaker notes in short. Start here.',
-    inputSchema: NO_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('get_deck', async () => {
-    const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
-    touch(link, {})
-    return text(format.deckOutline(deck))
-  }))
-  server.registerTool('get_theme', {
-    title: "Read the presentation's theme",
-    description: "The presentation's theme: its base theme, the colors slides show and the deck's own colors, its font and text styles, its stylesheet (themeCss) with any rules left out when it's drawn, and what a stylesheet's rules can target (slides, layouts, text boxes, placeholders and color variables). Read it before setting themeColors or themeCss with update_deck.",
-    inputSchema: NO_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('get_theme', async () => {
-    const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
-    touch(link, {})
-    return text(format.themeText(deck, LAYOUTS))
-  }))
-  server.registerTool('get_slide', {
-    title: 'Read a slide',
-    description: "One slide in full: its layout, section, minutes and background, its outline and speaker notes, and each element back to front with its id, type, position and size in pixels, whether it starts hidden, what clicking or hovering on it does (such as tabs showing and hiding panels), and its contents (text as Markdown, with $…$ for math and [@key] for citations). Ends with warnings for elements past the slide's edges and text boxes that overlap while both show.",
-    inputSchema: SLIDE_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('get_slide', async ({ slide }) => {
-    const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
-    const found = format.findSlide(deck, slide)
-    if (!found) return noSlide(deck, slide)
-    touch(link, { slide: found.slide.id })
-    return text(format.slideDetail(deck, found))
-  }))
-  server.registerTool('render_slide', {
-    title: 'See a slide',
-    description: 'A picture of one slide as it looks when presented, with all its steps shown, for checking layout after changing it: text that overflows or wraps badly, overlaps, and how diagrams and graphs came out. It takes several seconds, so check the slides you changed rather than every slide.',
-    inputSchema: SLIDE_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('render_slide', async ({ slide }) => render(link, slide, local)))
-  server.registerTool('show_deck', {
-    title: 'Show the presentation',
-    description: "Show the presentation to the person, live: in apps that show MCP Apps (claude.ai and ChatGPT among them), a viewer in the chat that follows your changes as you make them and tells you which slide they're looking at. Elsewhere, the person gets a link to open it in the Parallax editor. Returns the outline, as get_deck does. Call it once when you start changing the presentation, or with a slide to show them one.",
-    inputSchema: SHOW_INPUT,
-    annotations: READ_ONLY,
-    _meta: { ui: { resourceUri: viewer.VIEWER_URI }, 'ui/resourceUri': viewer.VIEWER_URI },
-  }, guarded('show_deck', async ({ slide } = {}) => {
-    const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
-    const found = slide != null ? format.findSlide(deck, slide) : null
-    if (slide != null && !found) return noSlide(deck, slide)
-    touch(link, found ? { slide: found.slide.id } : {})
-    note(link, 'show_deck')
-    return text([
-      `If this app shows MCP Apps, the presentation is showing for the person in a live viewer${found ? `, at slide ${found.number}` : ''}: it updates as you change the presentation.`,
-      `Otherwise, they can open it in the Parallax editor: ${viewer.editorUrl(site, deck)}`,
-      '',
-      format.deckOutline(deck),
-    ].join('\n'))
-  }))
-  server.registerTool('deck_preview', {
-    title: 'Preview for the viewer',
-    description: "For the presentation viewer that show_deck opens, not for you: a short-lived link to the presentation as presented, and its version, so the viewer can follow changes.",
-    inputSchema: PREVIEW_INPUT,
-    annotations: READ_ONLY,
-    _meta: { ui: { resourceUri: viewer.VIEWER_URI, visibility: ['app'] } },
-  }, guarded('deck_preview', async ({ slide, probe, viewer: version } = {}) => {
-    if (version) note(link, `viewer ${version} opened (the server has ${viewer.VIEWER_VERSION})`)
-    if (probe) noteProbe(link, probe)
-    return preview(link, site, slide)
-  }))
+// The tools on one presentation, each { name, title, description, input
+// (JSON Schema), annotations, _meta, write, run(link, input) }. The link says
+// which presentation, and who's asking: an AI collaborator link, or an AI
+// access token on one of its person's presentations (account.js). A tool
+// marked deckless needs no presentation, and one marked app is for the deck
+// viewer, not the AI. loadDeck(link), write(link, edits), render(link, slide,
+// local), datasets(link) and preview(link, site, slide) do the work
+// (createMcpRoute); local is this server's address for its own renderer, and
+// site the site's public origin. With viewer: false (the account server,
+// which no MCP App host reaches yet), show_deck gives the editor's link.
+function deckTools({ loadDeck, write, touch, render, datasets, preview }, { local, site, viewer: live = true } = {}) {
+  const read = (name, title, description, input, run, more = {}) => ({ name, title, description, input, annotations: READ_ONLY, run, ...more })
+  return [
+    read('get_deck', 'Read the presentation outline',
+      'The outline of the presentation: its title, size, theme and font, and each slide in the order shown, with its number, id, title, layout, minutes, the kinds of elements on it, and its outline and speaker notes in short. Start here.',
+      NO_INPUT, async link => {
+        const deck = await loadDeck(link)
+        if (!deck) return failure(goneOf(link))
+        touch(link, {})
+        return text(format.deckOutline(deck))
+      }),
+    read('get_theme', "Read the presentation's theme",
+      "The presentation's theme: its base theme, the colors slides show and the deck's own colors, its font and text styles, its stylesheet (themeCss) with any rules left out when it's drawn, and what a stylesheet's rules can target (slides, layouts, text boxes, placeholders and color variables). Read it before setting themeColors or themeCss with update_deck.",
+      NO_INPUT, async link => {
+        const deck = await loadDeck(link)
+        if (!deck) return failure(goneOf(link))
+        touch(link, {})
+        return text(format.themeText(deck, LAYOUTS))
+      }),
+    read('get_slide', 'Read a slide',
+      "One slide in full: its layout, section, minutes and background, its outline and speaker notes, and each element back to front with its id, type, position and size in pixels, whether it starts hidden, what clicking or hovering on it does (such as tabs showing and hiding panels), and its contents (text as Markdown, with $…$ for math and [@key] for citations). Ends with warnings for elements past the slide's edges and text boxes that overlap while both show.",
+      SLIDE_INPUT, async (link, { slide }) => {
+        const deck = await loadDeck(link)
+        if (!deck) return failure(goneOf(link))
+        const found = format.findSlide(deck, slide)
+        if (!found) return noSlide(deck, slide)
+        touch(link, { slide: found.slide.id })
+        return text(format.slideDetail(deck, found))
+      }),
+    read('render_slide', 'See a slide',
+      'A picture of one slide as it looks when presented, with all its steps shown, for checking layout after changing it: text that overflows or wraps badly, overlaps, and how diagrams and graphs came out. It takes several seconds, so check the slides you changed rather than every slide.',
+      SLIDE_INPUT, (link, { slide }) => render(link, slide, local)),
+    live
+      ? read('show_deck', 'Show the presentation',
+        "Show the presentation to the person, live: in apps that show MCP Apps (claude.ai and ChatGPT among them), a viewer in the chat that follows your changes as you make them and tells you which slide they're looking at. Elsewhere, the person gets a link to open it in the Parallax editor. Returns the outline, as get_deck does. Call it once when you start changing the presentation, or with a slide to show them one.",
+        SHOW_INPUT, async (link, { slide } = {}) => {
+          const deck = await loadDeck(link)
+          if (!deck) return failure(goneOf(link))
+          const found = slide != null ? format.findSlide(deck, slide) : null
+          if (slide != null && !found) return noSlide(deck, slide)
+          touch(link, found ? { slide: found.slide.id } : {})
+          note(link, 'show_deck')
+          return text([
+            `If this app shows MCP Apps, the presentation is showing for the person in a live viewer${found ? `, at slide ${found.number}` : ''}: it updates as you change the presentation.`,
+            `Otherwise, they can open it in the Parallax editor: ${viewer.editorUrl(site, deck)}`,
+            '',
+            format.deckOutline(deck),
+          ].join('\n'))
+        }, { _meta: { ui: { resourceUri: viewer.VIEWER_URI }, 'ui/resourceUri': viewer.VIEWER_URI } })
+      : read('show_deck', 'Show the presentation',
+        "A link for the person to open the presentation in the Parallax editor, where they see your changes as you make them, and its outline, as get_deck gives. Give them the link when you start changing a presentation.",
+        SHOW_INPUT, async (link, { slide } = {}) => {
+          const deck = await loadDeck(link)
+          if (!deck) return failure(goneOf(link))
+          const found = slide != null ? format.findSlide(deck, slide) : null
+          if (slide != null && !found) return noSlide(deck, slide)
+          touch(link, found ? { slide: found.slide.id } : {})
+          return text([
+            `The person can open it in the Parallax editor, and watch your changes land: ${viewer.editorUrl(site, deck)}`,
+            '',
+            format.deckOutline(deck),
+          ].join('\n'))
+        }),
+    read('deck_preview', 'Preview for the viewer',
+      "For the presentation viewer that show_deck opens, not for you: a short-lived link to the presentation as presented, and its version, so the viewer can follow changes.",
+      PREVIEW_INPUT, async (link, { slide, probe, viewer: version } = {}) => {
+        if (version) note(link, `viewer ${version} opened (the server has ${viewer.VIEWER_VERSION})`)
+        if (probe) noteProbe(link, probe)
+        return preview(link, site, slide)
+      }, { app: true, _meta: { ui: { resourceUri: viewer.VIEWER_URI, visibility: ['app'] } } }),
+    read('get_element_guide', 'Read how to add an element',
+      `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline, HTML embed or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
+      GUIDE_INPUT, async (link, { type } = {}) => text(guides.guideText(type)), { deckless: true }),
+    read('list_datasets', 'List the datasets',
+      'The datasets linked to the presentation, which its graphs can plot: each one\'s name, columns with their types and ranges, row count, where its data comes from and how old it is, and its first rows.',
+      NO_INPUT, link => datasets(link)),
+    ...WRITE_TOOLS.map(([name, title, description]) => ({
+      name, title, description, input: SCHEMAS[name],
+      annotations: DESTRUCTIVE.has(name) ? DELETE : WRITE,
+      write: true,
+      run: (link, input) => write(link, [{ op: name, ...input }]),
+    })),
+    {
+      name: 'apply_edits',
+      title: 'Make several changes at once',
+      description: `Make several changes in one go, all or nothing: up to ${MAX_EDITS} edits, each an object with op (${WRITE_TOOLS.map(([n]) => n).join(', ')}) and that tool's fields. They run in order, and slide numbers in each are read as the presentation is after the ones before it.`,
+      input: EDITS_INPUT,
+      annotations: DELETE,
+      write: true,
+      run: (link, { edits }) => write(link, edits),
+    },
+  ]
+}
+
+// The deck viewer's page, as MCP Apps hosts fetch it (show_deck's _meta)
+function registerViewer(server, site) {
   server.registerResource('deck-viewer', viewer.VIEWER_URI, {
     title: 'Presentation viewer',
     description: 'The presentation as presented, following the changes the AI makes',
@@ -270,32 +289,22 @@ function buildServer(link, { loadDeck, write, touch, render, datasets, preview }
   }, async () => ({
     contents: [{ uri: viewer.LEGACY_VIEWER_URI, mimeType: viewer.VIEWER_MIME, text: viewer.viewerHtml(), _meta: viewer.viewerMeta(site) }],
   }))
-  server.registerTool('get_element_guide', {
-    title: 'Read how to add an element',
-    description: `How to write the spec add_element takes for a graph, equation, table, code block, LaTeX picture, timeline, HTML embed or diagram: its fields, grammar, templates and an example. Without a type, lists the types. Types: ${guides.TYPES.join(', ')}.`,
-    inputSchema: GUIDE_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('get_element_guide', async ({ type }) => text(guides.guideText(type))))
-  server.registerTool('list_datasets', {
-    title: 'List the datasets',
-    description: 'The datasets linked to the presentation, which its graphs can plot: each one\'s name, columns with their types and ranges, row count, where its data comes from and how old it is, and its first rows.',
-    inputSchema: NO_INPUT,
-    annotations: READ_ONLY,
-  }, guarded('list_datasets', async () => datasets(link)))
-  for (const [name, title, description] of WRITE_TOOLS) {
-    server.registerTool(name, {
-      title,
-      description,
-      inputSchema: fromJsonSchema(SCHEMAS[name]),
-      annotations: DESTRUCTIVE.has(name) ? DELETE : WRITE,
-    }, guarded(name, async input => write(link, [{ op: name, ...input }])))
+}
+
+// The server for one request through a link: the link's tools for its
+// presentation, and the deck viewer
+function buildServer(link, tools, extra = {}) {
+  const server = new McpServer({ name: 'parallax', title: 'Parallax', version: '1.0.0' }, { instructions: INSTRUCTIONS })
+  for (const tool of deckTools(tools, extra)) {
+    server.registerTool(tool.name, {
+      title: tool.title,
+      description: tool.description,
+      inputSchema: fromJsonSchema(tool.input),
+      annotations: tool.annotations,
+      ...(tool._meta && { _meta: tool._meta }),
+    }, guarded(tool.name, async (input = {}) => tool.run(link, input)))
   }
-  server.registerTool('apply_edits', {
-    title: 'Make several changes at once',
-    description: `Make several changes in one go, all or nothing: up to ${MAX_EDITS} edits, each an object with op (${WRITE_TOOLS.map(([n]) => n).join(', ')}) and that tool's fields. They run in order, and slide numbers in each are read as the presentation is after the ones before it.`,
-    inputSchema: EDITS_INPUT,
-    annotations: DELETE,
-  }, guarded('apply_edits', async ({ edits }) => write(link, edits)))
+  registerViewer(server, extra.site)
   return server
 }
 
@@ -326,37 +335,6 @@ function heldChanges(prev, next, held) {
   return out
 }
 
-// Request headers passed on to the SDK
-const SKIP_HEADERS = new Set(['host', 'content-length', 'connection', 'transfer-encoding', 'cookie', 'keep-alive', 'upgrade'])
-
-// Serves one request through the SDK's fetch-shaped handler
-async function serve(handler, req, res, link, site) {
-  const controller = new AbortController()
-  res.on('close', () => { if (!res.writableEnded) controller.abort() })
-  const headers = new Headers()
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value != null && !SKIP_HEADERS.has(key)) headers.set(key, Array.isArray(value) ? value.join(', ') : value)
-  }
-  const post = req.method === 'POST'
-  const request = new Request(`${req.protocol}://${req.get('host')}${req.originalUrl}`, {
-    method: req.method,
-    headers,
-    body: post ? JSON.stringify(req.body ?? null) : undefined,
-    signal: controller.signal,
-  })
-  const response = await handler.fetch(request, {
-    authInfo: { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link, site, local: `http://127.0.0.1:${req.socket.localPort}` } },
-    ...(post && { parsedBody: req.body }),
-  })
-  res.status(response.status)
-  response.headers.forEach((value, key) => res.setHeader(key, value))
-  if (!response.body || req.method === 'HEAD') return res.end()
-  const body = Readable.fromWeb(response.body)
-  body.on('error', () => res.end())
-  body.pipe(res)
-}
-
-const wantsStream = req => /text\/event-stream/i.test(req.get('accept') || '')
 const wantsMarkdown = req => req.query.format === 'md'
   || (/text\/markdown/i.test(req.get('accept') || '') && !/text\/html/i.test(req.get('accept') || ''))
 
@@ -369,7 +347,7 @@ const wantsMarkdown = req => req.query.format === 'md'
 // datasets' files are kept without R2. The route's leave(linkId) takes a
 // revoked link out of the avatars, and its preview serves the viewer's
 // /ai-preview/:token.
-function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens() }) {
+function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -380,6 +358,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   // up the deck's versions. Returns its name, or null when the link edited
   // within SESSION_GAP_MS.
   async function sessionVersion(link) {
+    if (link.tokenId) return tokenSessionVersion(link)
     const { rows } = await storage.query(
       `WITH prev AS (SELECT id, last_edit_at FROM ai_links WHERE id = $1 FOR UPDATE)
        UPDATE ai_links a SET last_edit_at = NOW() FROM prev WHERE a.id = prev.id RETURNING prev.last_edit_at AS prev`,
@@ -391,6 +370,25 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     await storage.query(
       `DELETE FROM snapshots WHERE id IN (
          SELECT id FROM snapshots WHERE presentation_id = $1 AND ai_link_id IS NOT NULL ORDER BY created_at DESC OFFSET $2)`,
+      [link.deckId, KEEP_VERSIONS])
+    return saved ? name : null
+  }
+
+  // The same for an AI access token (account.js), per presentation it edits
+  async function tokenSessionVersion(link) {
+    const { rows } = await storage.query(
+      `WITH prev AS (SELECT last_edit_at FROM ai_token_edits WHERE token_id = $1 AND presentation_id = $2 FOR UPDATE),
+            next AS (INSERT INTO ai_token_edits (token_id, presentation_id, last_edit_at) VALUES ($1, $2, NOW())
+                     ON CONFLICT (token_id, presentation_id) DO UPDATE SET last_edit_at = NOW())
+       SELECT (SELECT last_edit_at FROM prev) AS prev`,
+      [link.tokenId, link.deckId])
+    const prev = rows[0]?.prev
+    if (prev && Date.now() - new Date(prev).getTime() < SESSION_GAP_MS) return null
+    const name = `Before ${link.name}'s edits`
+    const saved = await storage.createSnapshot(link.deckId, name, link.ownerId, { aiTokenId: link.tokenId })
+    await storage.query(
+      `DELETE FROM snapshots WHERE id IN (
+         SELECT id FROM snapshots WHERE presentation_id = $1 AND ai_token_id IS NOT NULL ORDER BY created_at DESC OFFSET $2)`,
       [link.deckId, KEEP_VERSIONS])
     return saved ? name : null
   }
@@ -409,11 +407,13 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   // Makes edits for a link: checked against the deck first, so a mistake
   // costs nothing, then made on the live document, all or nothing
   async function write(link, edits) {
+    // A token that may only read, or on a presentation its person only views
+    if (link.readOnly) return failure(link.readOnly)
     await markdown.ready()
     const current = await loadDeck(link)
-    if (!current) return failure(GONE)
+    if (!current) return failure(goneOf(link))
     // Past its owner's plan's limit, a presentation is read-only (deck-locks.js)
-    if (await deckLocks.isDeckLocked(storage, link.deckId)) return failure(deckLocks.lockedMessage(link.ownerPlan, { own: false }))
+    if (await deckLocks.isDeckLocked(storage, link.deckId)) return failure(deckLocks.lockedMessage(link.ownerPlan, { own: !!link.tokenId && link.userId === link.ownerId }))
     if (!collab) return failure('Editing through a link needs live editing, which this server doesn\'t have.')
     const datasets = (await storage.getPresentationDatasets(link.deckId).catch(() => null))?.map(d => ({ name: d.alias || d.name, columns: d.columns || [] })) ?? null
     try {
@@ -431,11 +431,11 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
         const blocked = heldChanges(deck, next, held)
         if (blocked.length) throw new HeldError(blocked)
         return { deck: next, result }
-      }, { aiLink: link.id })
+      }, link.tokenId ? { aiToken: link.tokenId } : { aiLink: link.id })
     } catch (err) {
       if (err instanceof EditError) return failure(err.message)
       if (err instanceof HeldError) return failure(await heldMessage(err.held, current))
-      if (err && err.reason === 'Forbidden') return failure(GONE)
+      if (err && err.reason === 'Forbidden') return failure(goneOf(link))
       throw err
     }
     touch(link, { ...(outcome.slideId ? { slide: outcome.slideId } : {}), selected: outcome.elementIds })
@@ -452,7 +452,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
 
   async function render(link, slide, local) {
     const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
+    if (!deck) return failure(goneOf(link))
     const found = format.findSlide(deck, slide)
     if (!found) return noSlide(deck, slide)
     touch(link, { slide: found.slide.id })
@@ -489,7 +489,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   }
 
   async function datasets(link) {
-    if (!(await loadDeck(link))) return failure(GONE)
+    if (!(await loadDeck(link))) return failure(goneOf(link))
     return text(await datasetList(storage, link.deckId, { ownerId: link.ownerId, localDir }))
   }
 
@@ -498,7 +498,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   // request, so the link's avatar isn't touched.
   async function preview(link, site, slide) {
     const deck = await loadDeck(link)
-    if (!deck) return failure(GONE)
+    if (!deck) return failure(goneOf(link))
     const shown = format.shownSlides(deck)
     const ids = new Set(shown.map(s => String(s.slide.id)))
     const aiSlide = presence?.entries.get(link.id)?.state?.slide
@@ -570,17 +570,22 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       if (req.method === 'POST' && !req.is('application/json')) {
         return res.status(415).json({ error: 'MCP requests are JSON (Content-Type: application/json)' })
       }
-      await serve(handler, req, res, link, origin(req))
+      await serve(handler, req, res, { token: link.id, clientId: link.id, scopes: ['deck:read', 'deck:write'], extra: { link, site: origin(req) } })
     } catch (err) {
       console.error('AI link request failed:', err.message)
       if (!res.headersSent) res.status(500).json({ error: 'Something went wrong' })
       else res.end()
     }
   }
+  // /mcp: the account-level server behind AI access tokens (account.js), on
+  // the same tools
+  const account = createAccountRoute({ storage, tools, deckTools, origin, createDeck })
+
   mcpRoute.leave = linkId => presence?.leave(linkId)
   mcpRoute.preview = previewPage
+  mcpRoute.account = account
   mcpRoute.presence = presence
   return mcpRoute
 }
 
-module.exports = { createMcpRoute, buildServer, GONE }
+module.exports = { createMcpRoute, buildServer, deckTools, GONE, INSTRUCTIONS }

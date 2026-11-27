@@ -1,0 +1,259 @@
+// AI access tokens (services/ai-tokens.js) and the account-level MCP server
+// behind them (server/mcp/account.js), through HTTP, against a real Postgres.
+// Needs TEST_DATABASE_URL, as ai-links.test.js does; without it, the tests
+// are skipped.
+
+const { describe, it, before, after } = require('node:test')
+const assert = require('node:assert/strict')
+const { DB, startCloudServer, until } = require('./helpers')
+
+const skip = DB ? false : 'TEST_DATABASE_URL is not set'
+let t, call, createDeck, pool
+
+const SLIDES = [
+  {
+    id: 'slide-title', layout: 'title', minutes: 1,
+    elements: [{ id: 'el-title', type: 'text', x: 80, y: 180, width: 800, height: 120, zIndex: 1, placeholder: 'title', content: '<h2>RC filters</h2>' }],
+  },
+]
+
+const makeToken = (who, body = { name: 'Claude Code' }) => call(who, 'POST', '/api/me/ai-tokens', body)
+
+// An MCP request to /mcp with a token, as ai-links.test.js sends them
+async function rpc(secret, method, params = {}, { notification = false } = {}) {
+  const res = await fetch(`${t.base}/mcp`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      ...(secret && { Authorization: `Bearer ${secret}` }),
+      ...(method !== 'initialize' && { 'MCP-Protocol-Version': '2025-11-25' }),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', ...(!notification && { id: 1 }), method, params }),
+  })
+  const text = await res.text()
+  let body = null
+  if ((res.headers.get('content-type') || '').includes('text/event-stream')) {
+    const data = text.split('\n').filter(l => l.startsWith('data:')).map(l => l.slice(5).trim()).filter(Boolean)
+    body = data.length ? JSON.parse(data[data.length - 1]) : null
+  } else {
+    try { body = JSON.parse(text) } catch {}
+  }
+  return { status: res.status, body, headers: res.headers }
+}
+const initialize = secret => rpc(secret, 'initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
+const callTool = (secret, name, args = {}) => rpc(secret, 'tools/call', { name, arguments: args })
+const toolText = res => res.body.result.content.map(c => c.text).join('\n')
+
+// A browser with presentation `id` open as `who`, as ai-links.test.js opens it
+const providers = []
+function openLive(who, id) {
+  const Y = require('yjs')
+  const { HocuspocusProvider } = require('@hocuspocus/provider')
+  const doc = new Y.Doc()
+  return new Promise(resolve => {
+    const provider = new HocuspocusProvider({
+      url: `${t.base.replace('http', 'ws')}/collab`, name: id, document: doc, token: who,
+      onSynced: () => resolve({ provider, doc, deck: () => require('../services/deck-doc').readDeck(doc) }),
+    })
+    providers.push(provider)
+  })
+}
+const aiHere = live => [...live.provider.awareness.getStates().values()].filter(s => s && s.ai)
+
+describe('AI access tokens', { skip }, () => {
+  before(async () => {
+    t = await startCloudServer()
+    ;({ call, createDeck, pool } = t)
+  })
+  after(async () => {
+    for (const provider of providers) provider.destroy()
+    await t?.stop()
+  })
+
+  it('lets a person make a token, shown once, lasting 90 days, to read and write', async () => {
+    const me = t.user('maker')
+    const made = await makeToken(me, { name: '  Claude   Code ' })
+    assert.equal(made.status, 201, JSON.stringify(made.body))
+    assert.equal(made.body.name, 'Claude Code')
+    assert.match(made.body.secret, /^plx_pat_[a-z2-7]{52}$/)
+    assert.equal(made.body.hint, made.body.secret.slice(-4))
+    assert.equal(made.body.server, 'https://parallax-presentations.com/mcp')
+    assert.deepEqual(made.body.scopes, ['decks:read', 'decks:write'])
+    const days = (new Date(made.body.expiresAt) - Date.now()) / 864e5
+    assert.ok(days > 89.9 && days < 90.1, `expires in ${days} days`)
+
+    const listed = await call(me, 'GET', '/api/me/ai-tokens')
+    assert.equal(listed.status, 200)
+    assert.deepEqual(listed.body.tokens.map(x => x.name), ['Claude Code'])
+    assert.equal(listed.body.tokens[0].secret, undefined)
+    const { rows } = await pool.query('SELECT token_hash FROM ai_tokens WHERE id = $1', [made.body.id])
+    assert.notEqual(rows[0].token_hash, made.body.secret)
+    // Someone else's list doesn't have it, and they can't revoke it
+    const other = t.user('other')
+    assert.deepEqual((await call(other, 'GET', '/api/me/ai-tokens')).body.tokens, [])
+    assert.equal((await call(other, 'DELETE', `/api/me/ai-tokens/${made.body.id}`)).status, 404)
+  })
+
+  it('checks the name, lifetime and scopes, and how many tokens a person has', async () => {
+    const me = t.user('limits')
+    assert.equal((await makeToken(me, { name: '  ' })).status, 400)
+    assert.equal((await makeToken(me, { name: 'x'.repeat(41) })).status, 400)
+    assert.equal((await makeToken(me, { name: 'Claude', days: 7 })).status, 400)
+    assert.equal((await makeToken(me, { name: 'Claude', days: null })).body.expiresAt != null, true)
+    assert.equal((await makeToken(me, { name: 'Claude', scopes: ['everything'] })).status, 400)
+    const reader = await makeToken(me, { name: 'Reader', scopes: [], days: 365 })
+    assert.deepEqual(reader.body.scopes, ['decks:read'])
+    for (let i = 0; i < 8; i++) assert.equal((await makeToken(me, { name: `T${i}` })).status, 201)
+    assert.equal((await makeToken(me, { name: 'One too many' })).status, 409)
+  })
+
+  it('needs a working token', async () => {
+    const none = await rpc(null, 'initialize', {})
+    assert.equal(none.status, 401)
+    assert.match(none.headers.get('www-authenticate'), /^Bearer/)
+    assert.match(none.body.error, /Authorization: Bearer/)
+    const wrong = await rpc('plx_pat_' + 'a'.repeat(52), 'initialize', {})
+    assert.equal(wrong.status, 401)
+    assert.match(wrong.body.error, /revoked or has expired/)
+
+    const me = t.user('checker')
+    const { secret, id } = (await makeToken(me)).body
+    const checked = await fetch(`${t.base}/mcp`, { headers: { Authorization: `Bearer ${secret}` } })
+    assert.equal(checked.status, 200)
+    assert.deepEqual(await checked.json(), { server: 'Parallax', token: 'Claude Code', scopes: ['decks:read', 'decks:write'] })
+
+    assert.equal((await call(me, 'DELETE', `/api/me/ai-tokens/${id}`)).status, 200)
+    assert.equal((await rpc(secret, 'initialize')).status, 401)
+    assert.deepEqual((await call(me, 'GET', '/api/me/ai-tokens')).body.tokens, [])
+
+    const expired = (await makeToken(me, { name: 'Old' })).body
+    await pool.query("UPDATE ai_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = $1", [expired.id])
+    assert.equal((await rpc(expired.secret, 'initialize')).status, 401)
+  })
+
+  it('answers MCP with the account tools, and the deck tools taking a deck', async () => {
+    const { secret } = (await makeToken(t.user('lister'))).body
+    const init = await initialize(secret)
+    assert.equal(init.status, 200, JSON.stringify(init.body))
+    assert.match(init.body.result.instructions, /list_decks lists their presentations/)
+    const tools = (await rpc(secret, 'tools/list')).body.result.tools
+    const names = tools.map(x => x.name)
+    assert.deepEqual(names.slice(0, 4), ['list_decks', 'create_deck', 'list_templates', 'list_themes'])
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets']) assert.ok(names.includes(name), name)
+    assert.ok(!names.includes('deck_preview'))
+    const byName = Object.fromEntries(tools.map(x => [x.name, x]))
+    assert.deepEqual(byName.get_slide.inputSchema.required, ['deck', 'slide'])
+    assert.deepEqual(byName.get_deck.inputSchema.required, ['deck'])
+    assert.equal(byName.get_element_guide.inputSchema.properties.deck, undefined)
+    assert.equal(byName.show_deck._meta, undefined)
+    assert.equal(byName.delete_slide.annotations.destructiveHint, true)
+  })
+
+  it("lists and opens the person's decks, shared ones too, and no one else's", async () => {
+    const me = t.user('reader'); const friend = t.user('friend'); const stranger = t.user('stranger')
+    const mine = await createDeck(me, 'Filters talk', { slides: SLIDES })
+    const theirs = await createDeck(friend, 'Lasers talk')
+    await t.invite(friend, theirs, me)
+    const hidden = await createDeck(stranger, 'Secret talk')
+    const { secret } = (await makeToken(me)).body
+
+    const list = toolText(await callTool(secret, 'list_decks'))
+    assert.match(list, /^2 presentations/)
+    assert.match(list, new RegExp(`Lasers talk — id ${theirs} \\(shared by [^,]+, 1 slide, changed \\d{4}-\\d\\d-\\d\\d\\)`))
+    assert.match(list, new RegExp(`Filters talk — id ${mine} \\(theirs, 1 slide`))
+    assert.doesNotMatch(list, /Secret talk/)
+    assert.match(toolText(await callTool(secret, 'list_decks', { query: 'laser' })), /^1 presentation with "laser"/)
+
+    // By id or by title
+    assert.match(toolText(await callTool(secret, 'get_deck', { deck: mine })), /^# Filters talk/)
+    assert.match(toolText(await callTool(secret, 'get_deck', { deck: 'lasers TALK' })), /^# Lasers talk/)
+    const nope = await callTool(secret, 'get_deck', { deck: hidden })
+    assert.equal(nope.body.result.isError, true)
+    assert.match(toolText(nope), /There's no presentation "[0-9a-f-]{36}" that Claude Code can open/)
+    assert.equal((await callTool(secret, 'get_deck', { deck: 'Secret talk' })).body.result.isError, true)
+    await createDeck(me, 'Filters talk')
+    assert.match(toolText(await callTool(secret, 'get_deck', { deck: 'Filters talk' })), /2 presentations are called "Filters talk". Name one by its id/)
+    // A deck tool without a deck is refused by its schema
+    assert.equal((await callTool(secret, 'get_deck', {})).body.result.isError, true)
+  })
+
+  it('edits a deck live under its name, saving a version first', async () => {
+    const me = t.user('editor')
+    const id = await createDeck(me, 'Filters talk', { slides: SLIDES })
+    const token = (await makeToken(me)).body
+    const live = await openLive(me, id)
+
+    const added = await callTool(token.secret, 'add_slide', { deck: id, layout: 'title-content', title: 'The cutoff', body: '- $f_c = 1/2\\pi RC$' })
+    assert.equal(added.body.result.isError, undefined, toolText(added))
+    assert.match(toolText(added), /a version named "Before Claude Code's edits" was saved/)
+    await until(() => live.deck().slides.length === 2, 'the new slide to reach the open editor')
+    await until(() => aiHere(live).length === 1, 'the token to show in the avatars')
+    assert.deepEqual(aiHere(live)[0].ai, { link: token.id, name: 'Claude Code' })
+
+    const again = await callTool(token.secret, 'update_deck', { deck: id, title: 'RC filters' })
+    assert.equal(again.body.result.isError, undefined, toolText(again))
+    assert.doesNotMatch(toolText(again), /version/)
+    const versions = (await call(me, 'GET', `/api/presentations/${id}/snapshots`)).body
+    assert.deepEqual(versions.map(v => v.name), ["Before Claude Code's edits"])
+    const { rows } = await pool.query('SELECT ai_token_id FROM snapshots WHERE presentation_id = $1', [id])
+    assert.deepEqual(rows.map(r => r.ai_token_id), [token.id])
+
+    // Revoked, it leaves the avatars
+    assert.equal((await call(me, 'DELETE', `/api/me/ai-tokens/${token.id}`)).status, 200)
+    await until(() => !aiHere(live).length, 'the token to leave the avatars')
+  })
+
+  it('changes nothing with a read-only token', async () => {
+    const me = t.user('readonly')
+    const id = await createDeck(me, 'Filters talk', { slides: SLIDES })
+    const { secret } = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body
+    assert.match(toolText(await callTool(secret, 'get_deck', { deck: id })), /^# Filters talk/)
+    const refused = await callTool(secret, 'update_deck', { deck: id, title: 'Renamed' })
+    assert.equal(refused.body.result.isError, true)
+    assert.match(toolText(refused), /can read presentations but not change them/)
+    const made = await callTool(secret, 'create_deck', { title: 'New' })
+    assert.equal(made.body.result.isError, true)
+    assert.equal((await call(me, 'GET', `/api/presentations/${id}`)).body.title, 'Filters talk')
+  })
+
+  it('makes decks, blank in a theme or from a template, within the plan', async () => {
+    const me = t.user('creator')
+    await call(me, 'GET', '/api/me')
+    const { secret } = (await makeToken(me)).body
+    const made = await callTool(secret, 'create_deck', { title: 'Optics lecture', theme: 'bauhaus' })
+    assert.equal(made.body.result.isError, undefined, toolText(made))
+    const id = /Its id, the deck for the other tools: ([0-9a-f-]{36})/.exec(toolText(made))[1]
+    assert.match(toolText(made), /^Made "Optics lecture", 1 slide, in the Bauhaus theme\./)
+    const deck = (await call(me, 'GET', `/api/presentations/${id}`)).body
+    assert.equal(deck.title, 'Optics lecture')
+    assert.equal(deck.theme, 'bauhaus')
+    assert.equal(deck.slides[0].layout, 'title')
+
+    const unknown = await callTool(secret, 'create_deck', { title: 'X', template: 'no-such-template' })
+    assert.match(toolText(unknown), /There's no template "no-such-template"/)
+    assert.equal((await callTool(secret, 'create_deck', { title: 'X', template: 'a', theme: 'black' })).body.result.isError, true)
+
+    // The Free plan keeps three editable: a fourth would lock the oldest
+    await createDeck(me, 'Two')
+    await createDeck(me, 'Three')
+    const refused = await callTool(secret, 'create_deck', { title: 'Four' })
+    assert.equal(refused.body.result.isError, true)
+    assert.match(toolText(refused), /has 3 presentations, and the Free plan keeps the 3 newest editable/)
+  })
+
+  it('lists the themes and the templates', async () => {
+    const { secret } = (await makeToken(t.user('browser'))).body
+    const themes = toolText(await callTool(secret, 'list_themes'))
+    assert.match(themes, /^\d+ themes, by id:/)
+    assert.match(themes, /- bauhaus: Bauhaus, light — Lowercase headings/)
+    assert.match(themes, /- black: Black, dark \(a reveal.js theme/)
+    const templates = await callTool(secret, 'list_templates')
+    assert.equal(templates.body.result.isError, undefined, toolText(templates))
+  })
+
+  it('reads the element guides without a deck', async () => {
+    const { secret } = (await makeToken(t.user('guide'))).body
+    assert.match(toolText(await callTool(secret, 'get_element_guide', { type: 'circuit' })), /circuit/i)
+  })
+})

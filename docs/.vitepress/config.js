@@ -94,6 +94,7 @@ export default defineConfig({
             { text: 'Links, Click & Hover Actions', link: '/tutorials/interactive-slides' },
             { text: 'Editing with Others', link: '/tutorials/editing-with-others' },
             { text: 'AI Collaborators', link: '/tutorials/ai-collaborators' },
+            { text: 'AI Access', link: '/tutorials/ai-access' },
             { text: 'Using LaTeX & Math', link: '/tutorials/using-latex' },
           ]
         }
