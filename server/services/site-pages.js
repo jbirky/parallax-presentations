@@ -86,10 +86,11 @@ function sitemapXml({ origin, examples, templates = [], plugins = [] }) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`
 }
 
-// Light or dark, as the visitor chose on this site (the app keeps the choice
-// in localStorage, utils/theme.js): dark unless light was chosen. Set before
-// the page draws, so it doesn't show the other one first.
-const THEME_EARLY = "try { var t = localStorage.getItem('parallax-theme'); if (t !== 'light' && t !== 'dark') t = localStorage.getItem('editor-theme') === 'light' ? 'light' : null; if (t) document.documentElement.setAttribute('data-theme', t) } catch (e) {}"
+// Light or dark, as the visitor chose on the site's pages: the landing page
+// and these share a choice in localStorage, apart from the dashboard's and
+// the editor's (utils/theme.js, the 'site' surface). Dark unless light was
+// chosen. Set before the page draws, so it doesn't show the other one first.
+const THEME_EARLY = "try { var t = localStorage.getItem('parallax-site-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t) } catch (e) {}"
 // The mark, as on the landing page: the P as each eye sees it, red and
 // blue, and where they overlap in the page's ink
 const MARK_P = 'M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z'
@@ -112,7 +113,7 @@ const THEME_TOGGLE = `(function () {
       button.addEventListener('click', function () {
         var theme = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light'
         root.setAttribute('data-theme', theme)
-        try { localStorage.setItem('parallax-theme', theme) } catch (e) {}
+        try { localStorage.setItem('parallax-site-theme', theme) } catch (e) {}
         label()
       })
       label()

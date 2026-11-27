@@ -11,8 +11,9 @@
     <!-- /meta -->
     <meta name="theme-color" content="#0f0f17" />
     <!-- A theme someone chose (utils/theme.js), before the app's script runs,
-         so the page doesn't show the other one first -->
-    <script>try { var t = localStorage.getItem('parallax-theme'); if (t !== 'light' && t !== 'dark') t = localStorage.getItem('editor-theme') === 'light' ? 'light' : null; if (t) document.documentElement.setAttribute('data-theme', t) } catch (e) {}</script>
+         so the page doesn't show the other one first: the hosted site's
+         landing page has its own; the self-hosted app still takes the old key -->
+    <script>try { var cloud = '%VITE_PARALLAX_MODE%' === 'cloud', site = cloud && (location.pathname === '/' || location.pathname === ''); var ok = function (v) { return v === 'light' || v === 'dark' ? v : null }; var t = ok(localStorage.getItem(site ? 'parallax-site-theme' : 'parallax-app-theme')); if (!t && !cloud) t = ok(localStorage.getItem('parallax-theme')) || (localStorage.getItem('editor-theme') === 'light' ? 'light' : null); if (t) document.documentElement.setAttribute('data-theme', t) } catch (e) {}</script>
   </head>
   <body>
     <div id="root"></div>
