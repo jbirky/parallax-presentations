@@ -20,19 +20,18 @@ const LIFETIMES = [[30, '30 days'], [90, '90 days'], [365, '1 year']]
 const PROD = 'https://parallax-presentations.com'
 export const PLUGIN_REPO = 'jbirky/parallax-agent'
 
-// How to give the token to Claude Code: with the plugin, which reads
-// PARALLAX_TOKEN (and PARALLAX_URL off the main site), or as a plain MCP
-// server
+// How to give the token to Claude Code: the parallax plugin asks for it when
+// it's installed, and keeps it in the system's credential store (with the
+// site, when it isn't the main one); or as a plain MCP server
 export function SetupSteps({ secret, server }) {
   const origin = server.replace(/\/mcp$/, '')
-  const env = [`export PARALLAX_TOKEN=${secret}`, ...(origin !== PROD ? [`export PARALLAX_URL=${origin}`] : [])].join('\n')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div>
-        <p style={muted}><strong>Claude Code, with the Parallax plugin</strong>: put this in your shell profile, then start Claude Code.</p>
-        <code style={codeStyle}>{env}</code>
-        <p style={{ ...muted, marginTop: 6 }}>In Claude Code, add the plugin once:</p>
+        <p style={muted}><strong>Claude Code, with the Parallax plugin</strong>: add it, and paste the token when it asks.</p>
         <code style={codeStyle}>{`/plugin marketplace add ${PLUGIN_REPO}\n/plugin install parallax@parallax-agent`}</code>
+        {origin !== PROD && <p style={{ ...muted, marginTop: 6 }}>Set its Parallax site option to <code>{origin}</code>.</p>}
+        <p style={{ ...muted, marginTop: 6 }}>Already installed? <code>/plugin configure parallax@parallax-agent</code> takes the new token.</p>
       </div>
       <div>
         <p style={muted}><strong>Any MCP client that sends headers</strong>: the server is {server}, with the header <code>Authorization: Bearer &lt;token&gt;</code>. In Claude Code without the plugin:</p>

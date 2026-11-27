@@ -15,18 +15,14 @@ The token is shown only once. If you lose it, make a new one and revoke the old 
 
 ## Using it in Claude Code
 
-Put the token in your shell profile (`~/.bashrc`, `~/.zshrc`), so Claude Code finds it when it starts:
-
-```bash
-export PARALLAX_TOKEN=plx_pat_…
-```
-
-Then add the Parallax plugin in Claude Code, once:
+Add the Parallax plugin in Claude Code, once:
 
 ```text
 /plugin marketplace add jbirky/parallax-agent
 /plugin install parallax@parallax-agent
 ```
+
+Paste the token when the plugin asks for it. Claude Code keeps it in your system's credential store, not in a file. To give it a new token later, run `/plugin configure parallax@parallax-agent`, then `/mcp` to reconnect.
 
 Run `/parallax:connect` to check the connection, then ask for a talk: `/parallax:new-talk an introduction to RC filters, 15 minutes`.
 
@@ -34,7 +30,7 @@ Without the plugin, add Parallax as an MCP server with the token as a header:
 
 ```bash
 claude mcp add --transport http parallax https://parallax-presentations.com/mcp \
-  --header "Authorization: Bearer $PARALLAX_TOKEN"
+  --header "Authorization: Bearer plx_pat_…"
 ```
 
 Any other MCP client that can send a header works the same way: the server is `https://parallax-presentations.com/mcp`, with `Authorization: Bearer <token>`.
