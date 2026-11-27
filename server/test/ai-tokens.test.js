@@ -150,6 +150,8 @@ describe('AI access tokens', { skip }, () => {
     const init = await initialize(secret)
     assert.equal(init.status, 200, JSON.stringify(init.body))
     assert.match(init.body.result.instructions, /list_decks lists their presentations/)
+    assert.match(init.body.result.instructions, /add_image adds a picture[\s\S]*add_dataset adds data/)
+    assert.doesNotMatch(init.body.result.instructions, /Images, video/)
     const tools = (await rpc(secret, 'tools/list')).body.result.tools
     const names = tools.map(x => x.name)
     assert.deepEqual(names.slice(0, 4), ['list_decks', 'create_deck', 'list_templates', 'list_themes'])
