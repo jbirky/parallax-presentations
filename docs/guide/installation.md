@@ -83,11 +83,13 @@ sudo zypper addrepo https://pkg.parallax-presentations.com/rpm/parallax.repo
 sudo zypper install parallax
 ```
 
-**Arch Linux**, from the AUR, with an AUR helper such as yay:
+**Arch Linux:** there's no package yet, so use the [AppImage](#linux-appimage). It needs FUSE 2:
 
 ```bash
-yay -S parallax-bin
+sudo pacman -S fuse2
 ```
+
+To update the AppImage, download the new one from the Releases page.
 
 The APT and RPM repositories are signed with the key `DB2A DD58 7A04 3936 5354 2FDE 33AC 80B1 6F45 03EE` (Parallax Packages). The APT source file carries it; dnf and zypper show it on the first install and ask you to trust it.
 
