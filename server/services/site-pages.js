@@ -137,14 +137,15 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
     <style>
       /* As the landing page has it (client/src/index.css, Landing Page): ink,
          or paper when light is chosen; the red and blue of 3D glasses as
-         offset shadows; Archivo headings over Inter; square corners */
-      :root { color-scheme: dark; --bg: #0c0c0d; --raise: #161618; --card: #1c1c1e; --line: rgba(250, 250, 247, 0.16); --chip-line: rgba(250, 250, 247, 0.25); --edge: rgba(250, 250, 247, 0.45); --text: #fafaf7; --muted: #c4c4c2; --faint: #9c9c9a; --tag: #ff8a80; --soft: #8db0ff; --accent: #1e60ff; --nav-bg: rgba(12, 12, 13, 0.92); --chip: transparent; --ring: rgba(250, 250, 247, 0.2);
+         offset shadows; Archivo headings over Inter; square corners. Ink and
+         paper are a soft charcoal and a warm gray-white, not black and white */
+      :root { color-scheme: dark; --ink: #1f1f22; --paper: #ecebe6; --bg: var(--ink); --raise: #28282c; --card: #2e2e32; --line: rgba(236, 235, 230, 0.16); --chip-line: rgba(236, 235, 230, 0.25); --edge: rgba(236, 235, 230, 0.45); --text: var(--paper); --muted: #b6b6b1; --faint: #9a9a96; --tag: #ff8a80; --soft: #8db0ff; --accent: #1e60ff; --nav-bg: rgba(31, 31, 34, 0.92); --chip: transparent; --ring: rgba(236, 235, 230, 0.2);
         --red: #ee2b2b; --blue: #1e60ff; --stereo: 10px;
         --frame-shadow: calc(-1 * var(--stereo)) 0 0 var(--red), var(--stereo) 0 0 var(--blue);
         --small-shadow: calc(-0.5 * var(--stereo)) 0 0 var(--red), calc(0.5 * var(--stereo)) 0 0 var(--blue);
         --stage-shadow: var(--frame-shadow);
         --display: Archivo, Inter, -apple-system, 'Segoe UI', sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace; }
-      :root[data-theme="light"] { color-scheme: light; --bg: #fafaf7; --raise: #efefea; --card: #efefea; --line: #d9d9d3; --chip-line: rgba(12, 12, 13, 0.25); --edge: #0c0c0d; --text: #0c0c0d; --muted: #3d3d40; --faint: #66666a; --tag: #c81e1e; --soft: #1a56e8; --nav-bg: rgba(250, 250, 247, 0.92); --ring: rgba(12, 12, 13, 0.18); }
+      :root[data-theme="light"] { color-scheme: light; --bg: var(--paper); --raise: #e2e1db; --card: #e2e1db; --line: #cfcec7; --chip-line: rgba(31, 31, 34, 0.25); --edge: var(--ink); --text: var(--ink); --muted: #434347; --faint: #5e5e62; --tag: #b81b1b; --soft: #1650d8; --nav-bg: rgba(236, 235, 230, 0.92); --ring: rgba(31, 31, 34, 0.18); }
       @media (max-width: 600px) { :root { --stereo: 6px; } }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       * { box-sizing: border-box; }
@@ -367,7 +368,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       .tp-thumb[aria-current="true"] { border-color: var(--blue); box-shadow: var(--small-shadow); }
       .tp-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
       .tp-ph { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; font-size: 11px; font-weight: 600; line-height: 1.25; text-align: center; overflow: hidden; }
-      .tp-n { position: absolute; right: 4px; bottom: 4px; z-index: 1; font: 600 10px/16px 'JetBrains Mono', ui-monospace, monospace; color: #fafaf7; background: rgba(12, 12, 13, 0.85); padding: 0 5px; }
+      .tp-n { position: absolute; right: 4px; bottom: 4px; z-index: 1; font: 600 10px/16px 'JetBrains Mono', ui-monospace, monospace; color: var(--paper); background: rgba(31, 31, 34, 0.85); padding: 0 5px; }
       .tp-slides { margin-top: 56px; }
       .tp-slides h2 { margin: 0 0 20px; font: 800 clamp(26px, 3vw, 34px)/1.1 var(--display); letter-spacing: -0.02em; }
       .tp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
@@ -395,7 +396,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       .tp-chips li { font-size: 12px; line-height: 1.4; color: var(--muted); border: 1px solid var(--line); padding: 3px 8px; }
       .tp-card details summary { cursor: pointer; font-size: 14px; font-weight: 600; }
       .tp-card pre { max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); font: 11.5px/1.5 var(--mono); white-space: pre; }
-      .theme-pill { position: absolute; right: 8px; bottom: 8px; padding: 5px 9px; font: normal 600 11.5px/1 Inter, sans-serif; color: #0c0c0d; background: #fafaf7; box-shadow: 0 0 0 1px rgba(12, 12, 13, 0.2); }
+      .theme-pill { position: absolute; right: 8px; bottom: 8px; padding: 5px 9px; font: normal 600 11.5px/1 Inter, sans-serif; color: var(--ink); background: var(--paper); box-shadow: 0 0 0 1px rgba(31, 31, 34, 0.2); }
       .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
       ${MORE_STYLES}`,
     main: `

@@ -159,11 +159,12 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
    the app's tokens, so the editor keeps the app's, and the dialogs it opens
    (inside .home-page) take them too. The admin page (.admin-page) shares them. */
 .home-page, .admin-page {
-  --bg-primary: #0c0c0d; --bg-secondary: #111113; --bg-panel: #141416; --bg-card: #18181a;
-  --bg-hover: #232326; --bg-active: #2c2c30; --border: rgba(250, 250, 247, 0.14); --border-light: rgba(250, 250, 247, 0.3);
-  --text-primary: #fafaf7; --text-secondary: #c4c4c2; --text-muted: #9c9c9a;
+  /* The landing page's soft ink (#1f1f22) and paper (#ecebe6), not black and white */
+  --bg-primary: #1f1f22; --bg-secondary: #232326; --bg-panel: #262629; --bg-card: #2a2a2e;
+  --bg-hover: #333337; --bg-active: #3c3c41; --border: rgba(236, 235, 230, 0.14); --border-light: rgba(236, 235, 230, 0.3);
+  --text-primary: #ecebe6; --text-secondary: #b6b6b1; --text-muted: #9a9a96;
   --accent: #1e60ff; --accent-hover: #3b74ff; --accent-light: #8db0ff; --accent-wash: rgba(30, 96, 255, 0.16);
-  --hp-red: #ee2b2b; --hp-blue: #1e60ff; --hp-tag: #ff8a80; --hp-edge: rgba(250, 250, 247, 0.45);
+  --hp-red: #ee2b2b; --hp-blue: #1e60ff; --hp-tag: #ff8a80; --hp-edge: rgba(236, 235, 230, 0.45);
   --hp-stereo: 8px;
   --hp-shadow: calc(-1 * var(--hp-stereo)) 0 0 var(--hp-red), var(--hp-stereo) 0 0 var(--hp-blue);
   --hp-small-shadow: calc(-0.5 * var(--hp-stereo)) 0 0 var(--hp-red), calc(0.5 * var(--hp-stereo)) 0 0 var(--hp-blue);
@@ -174,11 +175,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   -webkit-font-smoothing: antialiased;
 }
 [data-theme="light"] .home-page, [data-theme="light"] .admin-page {
-  --bg-primary: #efefea; --bg-secondary: #fafaf7; --bg-panel: #fafaf7; --bg-card: #fafaf7;
-  --bg-hover: #e3e3dc; --bg-active: #d9d9d3; --border: #d9d9d3; --border-light: #bdbdb6;
-  --text-primary: #0c0c0d; --text-secondary: #3d3d40; --text-muted: #66666a;
-  --accent-hover: #1a56e8; --accent-light: #1a56e8; --accent-wash: rgba(30, 96, 255, 0.12);
-  --hp-tag: #c81e1e; --hp-edge: #0c0c0d;
+  --bg-primary: #e2e1db; --bg-secondary: #ecebe6; --bg-panel: #ecebe6; --bg-card: #ecebe6;
+  --bg-hover: #d7d6cf; --bg-active: #cfcec7; --border: #cfcec7; --border-light: #b3b2ab;
+  --text-primary: #1f1f22; --text-secondary: #434347; --text-muted: #5e5e62;
+  --accent-hover: #1650d8; --accent-light: #1650d8; --accent-wash: rgba(30, 96, 255, 0.12);
+  --hp-tag: #b81b1b; --hp-edge: #1f1f22;
   color-scheme: light;
 }
 .home-page :focus-visible, .admin-page :focus-visible { outline: 3px solid var(--hp-blue); outline-offset: 2px; }
@@ -231,7 +232,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .home-page .deck-row-thumb { border-radius: 0; }
 .home-page .drop-target, .home-page .deck-crumb.drop-target, .home-page .deck-row.drop-target td { background: var(--accent-wash) !important; outline-color: var(--hp-blue); }
 /* Its dialogs */
-.home-page .modal-overlay { background: rgba(6, 6, 7, 0.8); }
+.home-page .modal-overlay { background: rgba(14, 14, 16, 0.8); }
 .home-page .modal { background: var(--bg-secondary); border: 1px solid var(--border); border-top: 4px solid var(--text-primary); border-radius: 0; }
 .home-page .modal h2 { font: 800 22px/1.2 var(--hp-display); letter-spacing: -0.02em; }
 .home-page .form-input, .home-page .form-select, .home-page .theme-choice, .home-page .theme-swatch { border-radius: 0; }
