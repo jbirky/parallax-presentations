@@ -33,7 +33,7 @@ const {
   PlanError, createPlan, updatePlan, deletePlan, addPlanPrice, removePlanPrice,
 } = require('./services/plans')
 const { guestAuth, guestCreateLimiter } = require('./middleware/guest')
-const { uploadQuota, storageUsedBytes } = require('./middleware/upload-quota')
+const { uploadQuota, storageUsedBytes, teamStorageUsedBytes, teamStorageBytes } = require('./middleware/upload-quota')
 const collaboration = require('./services/collaboration')
 const teams = require('./services/teams')
 const emailService = require('./services/email')
@@ -579,6 +579,9 @@ app.get('/ai-preview/:token', deckPageLimiter, (req, res, next) => (mcpRoute ? m
 // ahead of sign-in too: its token is the sign-in, sent as a Bearer header,
 // which Clerk would otherwise read as one of its own
 app.all('/mcp', mcpMissLimiter, mcpTokenLimiter, (req, res, next) => (mcpRoute ? mcpRoute.account(req, res) : next()))
+// A file sent to an address request_upload gave (server/mcp/index.js): the
+// address is the sign-in, used once
+app.all('/mcp/upload/:ticket', mcpMissLimiter, (req, res, next) => (mcpRoute ? mcpRoute.upload(req, res) : next()))
 
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
 // In self-hosted mode, sets req.userId = null (no-op)
@@ -2979,7 +2982,46 @@ async function mcpCreateDeck({ userId, userPlan, title, theme, template }) {
   }
   return created
 }
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck }) : null
+// Pictures an AI adds (server/mcp/index.js's add_image and uploads): kept
+// with a presentation's uploads, as the editor keeps them, on its owner's
+// storage (or its team's), within the plan
+const mcpUploads = {
+  async store({ buffer, filename, deckId, ownerId }) {
+    const ext = path.extname(filename).toLowerCase()
+    if (isR2Enabled()) {
+      const dir = path.join(os.tmpdir(), 'parallax-uploads')
+      fs.ensureDirSync(dir)
+      const tmp = path.join(dir, `${uuidv4()}${ext}`)
+      fs.writeFileSync(tmp, buffer)
+      return (await r2Upload(tmp, filename, { presentationId: deckId, userId: ownerId, storage })).url
+    }
+    const dir = path.join(UPLOADS_DIR, deckId)
+    fs.ensureDirSync(dir)
+    const name = `${uuidv4()}${ext}`
+    fs.writeFileSync(path.join(dir, name), buffer)
+    return `/uploads/${deckId}/${name}`
+  },
+  async exists(deckId, src) {
+    const rest = src.slice('/uploads/'.length)
+    if (!rest.startsWith(`${deckId}/`) || rest.includes('..')) return false
+    if (isR2Enabled()) {
+      const { rows } = await storage.query('SELECT 1 FROM uploads WHERE filename = $1 AND presentation_id = $2 LIMIT 1', [rest, deckId])
+      return rows.length > 0
+    }
+    const file = path.resolve(UPLOADS_DIR, rest)
+    return file.startsWith(path.resolve(UPLOADS_DIR) + path.sep) && fs.existsSync(file)
+  },
+  async room(access, bytes) {
+    const plan = planFor(access.ownerPlan)
+    const size = n => `${Math.round(n / 1024 / 1024)} MB`
+    if (plan.maxFileBytes && bytes > plan.maxFileBytes) return `Files are limited to ${size(plan.maxFileBytes)} each on the ${plan.name} plan.`
+    const limit = access.teamId ? teamStorageBytes(plan, access.seats) : plan.storageBytes
+    if (!limit || limit === Infinity) return null
+    const used = access.teamId ? await teamStorageUsedBytes(storage, access.teamId) : await storageUsedBytes(storage, access.ownerId)
+    return used + bytes > limit ? `The presentation's storage is full (${size(limit)} on the ${plan.name} plan), so the picture can't be added. The person can delete some files, or upgrade.` : null
+  },
+}
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())

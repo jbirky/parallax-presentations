@@ -37,6 +37,10 @@ const thumbnails = require('../services/slide-thumbnail')
 const { datasetList } = require('./datasets')
 const guides = require('./guides')
 const review = require('./review')
+const images = require('./images')
+const { safeFetch } = require('../services/safe-fetch')
+const { planFor } = require('../services/plans')
+const { presentationAccess } = require('../services/collaboration')
 const viewer = require('./viewer')
 const { READ_ONLY, WRITE, DELETE, text, failure, guarded, serve, wantsStream } = require('./common')
 const { createAccountRoute } = require('./account')
@@ -50,7 +54,7 @@ const INSTRUCTIONS = [
   'get_theme shows the presentation\'s theme, and what its stylesheet can target; update_deck gives it a theme, text styles, colors of its own (themeColors) and a stylesheet (themeCss), scoped to its slides.',
   'show_deck shows the presentation to the person in the chat, live, in apps that show MCP Apps (claude.ai and ChatGPT among them): call it once when you start changing it, so they can watch your changes land, and it tells you which slide they\'re looking at.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
-  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. Images, video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
+  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. add_image adds a picture from a public https URL, as base64, or from a file sent with request_upload. Video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
 ].join(' ')
 
 // How long without an edit before the next one starts a new session, with a
@@ -70,6 +74,32 @@ const SLIDE_INPUT = ({
     },
   },
   required: ['slide'],
+  additionalProperties: false,
+})
+
+const UPLOAD_INPUT = ({
+  type: 'object',
+  properties: {
+    filename: { type: 'string', minLength: 1, maxLength: 200, description: `The file's name, such as figure3.png: a picture (${images.IMAGE_EXTENSIONS.join(', ')})` },
+  },
+  required: ['filename'],
+  additionalProperties: false,
+})
+const IMAGE_INPUT = ({
+  type: 'object',
+  properties: {
+    slide: SLIDE_INPUT.properties.slide,
+    upload: { type: 'string', maxLength: 300, description: 'A picture sent with request_upload: the upload path its answer gave, /uploads/…' },
+    url: { type: 'string', maxLength: 2000, description: 'A picture on the web, by its https address: the server fetches it once and keeps a copy with the presentation' },
+    data: { type: 'string', maxLength: Math.ceil(images.MAX_INLINE_BYTES / 3) * 4 + 4, description: 'A picture as base64 (PNG, JPEG, GIF, WebP or SVG), up to 2 MB: for small pictures you made yourself' },
+    alt: { type: 'string', minLength: 1, maxLength: 300, description: 'What the picture shows, for people who can\'t see it' },
+    fit: { type: 'string', enum: ['contain', 'cover'], description: 'contain (the whole picture shows, the default) or cover (it fills the box, cropped)' },
+    x: { type: 'number', description: 'Left edge, in pixels from the slide\'s left (the slide is 960 wide)' },
+    y: { type: 'number', description: 'Top edge, in pixels from the slide\'s top (the slide is 540 tall)' },
+    width: { type: 'number', description: 'Width in pixels; with no size, it fills the space under a title, keeping its shape' },
+    height: { type: 'number', description: 'Height in pixels' },
+  },
+  required: ['slide', 'alt'],
   additionalProperties: false,
 })
 
@@ -189,7 +219,7 @@ const noSlide = (deck, slide) => {
 // (createMcpRoute); local is this server's address for its own renderer, and
 // site the site's public origin. With viewer: false (the account server,
 // which no MCP App host reaches yet), show_deck gives the editor's link.
-function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview }, { local, site, viewer: live = true } = {}) {
+function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage }, { local, site, viewer: live = true } = {}) {
   const read = (name, title, description, input, run, more = {}) => ({ name, title, description, input, annotations: READ_ONLY, run, ...more })
   return [
     read('get_deck', 'Read the presentation outline',
@@ -276,6 +306,24 @@ function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, prev
     read('list_datasets', 'List the datasets',
       'The datasets linked to the presentation, which its graphs can plot: each one\'s name, columns with their types and ranges, row count, where its data comes from and how old it is, and its first rows.',
       NO_INPUT, link => datasets(link)),
+    {
+      name: 'request_upload',
+      title: 'Get an address to upload a file',
+      description: "A one-time address for sending one picture from your computer to the presentation, good for 10 minutes: in a terminal, `curl -sS -T <file> <address>`. Its answer gives the upload's path, for add_image. For pictures on the web, give add_image their address instead.",
+      input: UPLOAD_INPUT,
+      annotations: WRITE,
+      write: true,
+      run: (link, { filename }) => requestUpload(link, filename, site),
+    },
+    {
+      name: 'add_image',
+      title: 'Add a picture',
+      description: 'Add a picture to a slide, with alt text: one sent with request_upload (upload), one on the web (url, fetched once and kept with the presentation), or a small one as base64 (data). With no size it fills the space under the slide\'s title, keeping its shape. Check it with render_slide.',
+      input: IMAGE_INPUT,
+      annotations: WRITE,
+      write: true,
+      run: (link, input) => addImage(link, input),
+    },
     ...WRITE_TOOLS.map(([name, title, description]) => ({
       name, title, description, input: SCHEMAS[name],
       annotations: DESTRUCTIVE.has(name) ? DELETE : WRITE,
@@ -371,7 +419,7 @@ const wantsMarkdown = req => req.query.format === 'md'
 // datasets' files are kept without R2. The route's leave(linkId) takes a
 // revoked link out of the avatars, and its preview serves the viewer's
 // /ai-preview/:token.
-function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck }) {
+function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck, uploads, fetchImage = safeFetch }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -430,7 +478,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
 
   // Makes edits for a link: checked against the deck first, so a mistake
   // costs nothing, then made on the live document, all or nothing
-  async function write(link, edits) {
+  async function write(link, edits, { internal = false } = {}) {
     // A token that may only read, or on a presentation its person only views
     if (link.readOnly) return failure(link.readOnly)
     await markdown.ready()
@@ -441,7 +489,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     if (!collab) return failure('Editing through a link needs live editing, which this server doesn\'t have.')
     const datasets = (await storage.getPresentationDatasets(link.deckId).catch(() => null))?.map(d => ({ name: d.alias || d.name, columns: d.columns || [] })) ?? null
     try {
-      runEdits(structuredClone(current), edits, { datasets })
+      runEdits(structuredClone(current), edits, { datasets, internal })
     } catch (err) {
       if (err instanceof EditError) return failure(err.message)
       throw err
@@ -451,7 +499,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     try {
       outcome = await collab.editDeck(link.deckId, (deck, held) => {
         const next = structuredClone(deck)
-        const result = runEdits(next, edits, { datasets })
+        const result = runEdits(next, edits, { datasets, internal })
         const blocked = heldChanges(deck, next, held)
         if (blocked.length) throw new HeldError(blocked)
         return { deck: next, result }
@@ -559,6 +607,142 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     return picture(image)
   }
 
+  // ── Pictures (add_image, request_upload, PUT /mcp/upload/<ticket>) ──
+  // uploads, from server/index.js: store({ buffer, filename, deckId,
+  // ownerId }) keeps a file with a presentation's uploads and gives its
+  // path; exists(deckId, src) says whether a path is one of them; room(access,
+  // bytes) says why a file won't fit the plan, or null.
+  const tickets = images.uploadTickets()
+  // Pictures' sizes in pixels, by their paths, as they were uploaded
+  const sizes = new Map()
+  const noteSize = (src, info) => {
+    if (info.width && info.height) sizes.set(src, { width: info.width, height: info.height })
+    if (sizes.size > 2000) sizes.delete(sizes.keys().next().value)
+  }
+  // The person whose access a link or token has on its presentation
+  const accessOf = link => presentationAccess(storage, link.deckId, link.userId || link.ownerId)
+  // Why a link or token can't change its presentation now, or null
+  async function cantWrite(link) {
+    if (link.readOnly) return link.readOnly
+    if (await deckLocks.isDeckLocked(storage, link.deckId)) return deckLocks.lockedMessage(link.ownerPlan, { own: !!link.tokenId && link.userId === link.ownerId })
+    return null
+  }
+  const fileLimit = access => Math.min(images.MAX_IMAGE_BYTES, planFor(access.ownerPlan).maxFileBytes || images.MAX_IMAGE_BYTES)
+  const megabytes = n => `${Math.round(n / 1024 / 1024 * 10) / 10} MB`
+
+  async function requestUpload(link, filename, site) {
+    if (!uploads) return failure('This Parallax server can\'t take uploads through AI tools.')
+    if (!(await loadDeck(link))) return failure(goneOf(link))
+    const why = await cantWrite(link)
+    if (why) return failure(why)
+    const ext = require('path').extname(filename).toLowerCase()
+    if (!images.IMAGE_EXTENSIONS.includes(ext)) return failure(`request_upload takes pictures: ${images.IMAGE_EXTENSIONS.join(', ')}. Turn a PDF figure into a PNG first (for example pdftoppm -png -r 200).`)
+    const access = await accessOf(link)
+    if (!access) return failure(goneOf(link))
+    const ticket = tickets.make(link.id, { link, access, filename })
+    if (!ticket) return failure('There are 20 upload addresses waiting to be used already. Use those, or wait 10 minutes.')
+    const address = `${site}/mcp/upload/${ticket}`
+    return text([
+      `Send the file to this address within 10 minutes, once: up to ${megabytes(fileLimit(access))}.`,
+      '',
+      `curl -sS -T ${JSON.stringify(filename)} ${address}`,
+      '',
+      'Its answer is JSON with upload, the path to give add_image, and the picture\'s width and height in pixels.',
+    ].join('\n'))
+  }
+
+  async function addImage(link, input) {
+    if (!uploads) return failure('This Parallax server can\'t take pictures through AI tools.')
+    const deck = await loadDeck(link)
+    if (!deck) return failure(goneOf(link))
+    const sources = ['upload', 'url', 'data'].filter(k => input[k] !== undefined)
+    if (sources.length !== 1) return failure('Give the picture one way: upload (from request_upload), url (an https address) or data (base64).')
+    if (!format.findSlide(deck, input.slide)) return noSlide(deck, input.slide)
+    const why = await cantWrite(link)
+    if (why) return failure(why)
+    let src
+    let size = null
+    if (input.upload !== undefined) {
+      src = String(input.upload).trim()
+      if (!src.startsWith(`/uploads/${link.deckId}/`) || !(await uploads.exists(link.deckId, src))) {
+        return failure("That upload isn't one of this presentation's. Send the file with request_upload, then give the upload path its answer gave.")
+      }
+      size = sizes.get(src) || null
+    } else {
+      const access = await accessOf(link)
+      if (!access) return failure(goneOf(link))
+      const limit = fileLimit(access)
+      let bytes
+      let name = 'image'
+      if (input.url !== undefined) {
+        let url
+        try { url = new URL(input.url) } catch { return failure('url must be an https address.') }
+        if (url.protocol !== 'https:') return failure('url must be an https address.')
+        name = require('path').basename(url.pathname).replace(/\.[^.]*$/, '') || 'image'
+        try {
+          const res = await fetchImage(url.href, { maxBytes: limit, totalMs: 20000 })
+          if (res.status !== 200) return failure(`${url.host} answered ${res.status} for that address, so there's no picture to add.`)
+          bytes = res.body
+        } catch (err) {
+          return failure(`The picture couldn't be fetched: ${String(err.message || err).split('\n')[0]}`)
+        }
+      } else {
+        bytes = Buffer.from(String(input.data).replace(/^data:[^,]*,/, ''), 'base64')
+        if (bytes.length > images.MAX_INLINE_BYTES) return failure('data takes pictures up to 2 MB. Send a bigger one with request_upload.')
+      }
+      const info = images.imageInfo(bytes)
+      if (!info) return failure('That isn\'t a PNG, JPEG, GIF, WebP or SVG picture.')
+      const full = await uploads.room(access, bytes.length)
+      if (full) return failure(full)
+      src = await uploads.store({ buffer: bytes, filename: name.replace(/[^\w.-]+/g, '-').slice(0, 80) + info.ext, deckId: link.deckId, ownerId: access.ownerId })
+      noteSize(src, info)
+      size = sizes.get(src) || null
+    }
+    const { slide, alt, fit, x, y, width, height } = input
+    return write(link, [{ op: 'add_image', slide, src, alt, ...(fit && { fit }), ...(size && { size }), x, y, width, height }], { internal: true })
+  }
+
+  // PUT /mcp/upload/<ticket>: the file a request_upload address is for, as
+  // its body (curl -T). Answers JSON: { upload, type, width, height, bytes }.
+  async function uploadRoute(req, res) {
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' })
+    const refuse = (status, error) => {
+      res.set('Connection', 'close')
+      res.status(status).json({ error })
+      req.resume()
+    }
+    try {
+      if (req.method !== 'PUT' && req.method !== 'POST') return refuse(405, 'Send the file with PUT, as curl -T does.')
+      const found = tickets.take(req.params.ticket)
+      if (!found || !uploads) return refuse(404, 'This upload address was used already, has expired, or never was one. Ask request_upload for a new one.')
+      const { link, access, filename } = found
+      const length = Number(req.get('content-length'))
+      const limit = fileLimit(access)
+      if (!length) return refuse(411, 'Send the file with its length, as curl -T does.')
+      if (length > limit) return refuse(413, `The file is ${megabytes(length)}; files are limited to ${megabytes(limit)}.`)
+      const full = await uploads.room(access, length)
+      if (full) return refuse(413, full)
+      const chunks = []
+      let got = 0
+      for await (const chunk of req) {
+        got += chunk.length
+        if (got > limit) return refuse(413, `Files are limited to ${megabytes(limit)}.`)
+        chunks.push(chunk)
+      }
+      const bytes = Buffer.concat(chunks)
+      const info = images.imageInfo(bytes)
+      if (!info) return res.status(415).json({ error: 'That isn\'t a PNG, JPEG, GIF, WebP or SVG picture.' })
+      if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
+      const base = require('path').basename(filename).replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').slice(0, 80) || 'image'
+      const src = await uploads.store({ buffer: bytes, filename: base + info.ext, deckId: link.deckId, ownerId: access.ownerId })
+      noteSize(src, info)
+      res.status(201).json({ upload: src, type: info.mime, width: info.width, height: info.height, bytes: bytes.length })
+    } catch (err) {
+      console.error('MCP upload failed:', err.message)
+      if (!res.headersSent) res.status(500).json({ error: 'Something went wrong' })
+    }
+  }
+
   async function datasets(link) {
     if (!(await loadDeck(link))) return failure(goneOf(link))
     return text(await datasetList(storage, link.deckId, { ownerId: link.ownerId, localDir }))
@@ -613,7 +797,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     }
   }
 
-  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview }
+  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage }
   const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })
@@ -655,6 +839,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   mcpRoute.leave = linkId => presence?.leave(linkId)
   mcpRoute.preview = previewPage
   mcpRoute.account = account
+  mcpRoute.upload = uploadRoute
   mcpRoute.presence = presence
   return mcpRoute
 }

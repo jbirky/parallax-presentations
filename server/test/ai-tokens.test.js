@@ -5,6 +5,18 @@
 
 const { describe, it, before, after } = require('node:test')
 const assert = require('node:assert/strict')
+const { png } = require('./pictures')
+
+// add_image's pictures from the web: https://pictures.test/ answers here,
+// before the server takes safeFetch (the real one refuses this machine)
+const safeFetchModule = require('../services/safe-fetch')
+const realSafeFetch = safeFetchModule.safeFetch
+safeFetchModule.safeFetch = async (url, opts) => {
+  if (url === 'https://pictures.test/chart.png') return { status: 200, headers: {}, body: png(300, 100) }
+  if (url === 'https://pictures.test/page.html') return { status: 200, headers: {}, body: Buffer.from('<html></html>') }
+  if (url === 'https://pictures.test/missing.png') return { status: 404, headers: {}, body: Buffer.alloc(0) }
+  return realSafeFetch(url, opts)
+}
 const { DB, startCloudServer, until } = require('./helpers')
 const thumbnails = require('../services/slide-thumbnail')
 
@@ -141,7 +153,7 @@ describe('AI access tokens', { skip }, () => {
     const tools = (await rpc(secret, 'tools/list')).body.result.tools
     const names = tools.map(x => x.name)
     assert.deepEqual(names.slice(0, 4), ['list_decks', 'create_deck', 'list_templates', 'list_themes'])
-    for (const name of ['get_deck', 'get_slide', 'render_slide', 'render_deck', 'check_deck', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets']) assert.ok(names.includes(name), name)
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'render_deck', 'check_deck', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets', 'request_upload', 'add_image']) assert.ok(names.includes(name), name)
     assert.ok(!names.includes('deck_preview'))
     const byName = Object.fromEntries(tools.map(x => [x.name, x]))
     assert.deepEqual(byName.get_slide.inputSchema.required, ['deck', 'slide'])
@@ -281,6 +293,60 @@ describe('AI access tokens', { skip }, () => {
     } finally {
       Object.assign(thumbnails, real)
     }
+  })
+
+  it('takes pictures: uploaded with curl, from the web, or as base64', async () => {
+    const me = t.user('pictures')
+    const id = await createDeck(me, 'Filters talk', { slides: SLIDES })
+    const other = await createDeck(me, 'Other talk', { slides: SLIDES })
+    const { secret } = (await makeToken(me)).body
+
+    const asked = await callTool(secret, 'request_upload', { deck: id, filename: 'figure 3.png' })
+    assert.equal(asked.body.result.isError, undefined, toolText(asked))
+    const address = /curl -sS -T "figure 3.png" (\S+)/.exec(toolText(asked))[1]
+    assert.match(address, /^https:\/\/parallax-presentations\.com\/mcp\/upload\/[a-z2-7]{39}$/)
+    const local = address.replace('https://parallax-presentations.com', t.base)
+    const put = body => fetch(local, { method: 'PUT', body })
+    const sent = await put(png(800, 450))
+    assert.equal(sent.status, 201)
+    const upload = await sent.json()
+    assert.match(upload.upload, new RegExp(`^/uploads/${id}/figure-3-?[0-9a-f-]*\\.png$|^/uploads/${id}/[0-9a-f-]+\\.png$`))
+    assert.deepEqual([upload.type, upload.width, upload.height], ['image/png', 800, 450])
+    assert.equal((await put(png(10, 10))).status, 404, 'an address works once')
+    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'paper.pdf' })), /takes pictures.*pdftoppm/)
+
+    // Not a picture: refused, and nothing kept
+    const notPicture = /(\S+)$/.exec(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'x.png' })).split('\n')[2])[1].replace('https://parallax-presentations.com', t.base)
+    assert.equal((await fetch(notPicture, { method: 'PUT', body: '%PDF-1.7' })).status, 415)
+
+    const added = await callTool(secret, 'add_image', { deck: id, slide: 1, upload: upload.upload, alt: 'The cutoff, measured' })
+    assert.equal(added.body.result.isError, undefined, toolText(added))
+    let el = (await call(me, 'GET', `/api/presentations/${id}`)).body.slides[0].elements.find(e => e.type === 'image')
+    assert.deepEqual({ src: el.src, alt: el.alt, fit: el.objectFit, w: el.width, h: el.height }, { src: upload.upload, alt: 'The cutoff, measured', fit: 'contain', w: 676, h: 380 })
+    // The file is served where the slide looks for it
+    assert.equal((await fetch(t.base + upload.upload)).status, 200)
+
+    const elsewhere = await callTool(secret, 'add_image', { deck: other, slide: 1, upload: upload.upload, alt: 'x' })
+    assert.match(toolText(elsewhere), /isn't one of this presentation's/)
+    assert.match(toolText(await callTool(secret, 'add_image', { deck: id, slide: 1, url: 'https://pictures.test/chart.png', data: 'AA==', alt: 'x' })), /one way/)
+
+    const fetched = await callTool(secret, 'add_image', { deck: id, slide: 1, url: 'https://pictures.test/chart.png', alt: 'A chart', x: 100, y: 200, width: 600 })
+    assert.equal(fetched.body.result.isError, undefined, toolText(fetched))
+    el = (await call(me, 'GET', `/api/presentations/${id}`)).body.slides[0].elements.filter(e => e.type === 'image')[1]
+    assert.match(el.src, new RegExp(`^/uploads/${id}/.+\\.png$`))
+    assert.deepEqual([el.x, el.y, el.width, el.height], [100, 200, 600, 200])
+    assert.match(toolText(await callTool(secret, 'add_image', { deck: id, slide: 1, url: 'https://pictures.test/page.html', alt: 'x' })), /isn't a PNG, JPEG, GIF, WebP or SVG/)
+    assert.match(toolText(await callTool(secret, 'add_image', { deck: id, slide: 1, url: 'https://pictures.test/missing.png', alt: 'x' })), /answered 404/)
+    assert.match(toolText(await callTool(secret, 'add_image', { deck: id, slide: 1, url: 'http://pictures.test/chart.png', alt: 'x' })), /https address/)
+
+    const inline = await callTool(secret, 'add_image', { deck: id, slide: 1, data: png(20, 20).toString('base64'), alt: 'A dot' })
+    assert.equal(inline.body.result.isError, undefined, toolText(inline))
+    assert.match(toolText(await callTool(secret, 'add_image', { deck: id, slide: 9, data: png(20, 20).toString('base64'), alt: 'x' })), /from 1 to 1/)
+
+    // A token that only reads gets no address and adds nothing
+    const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
+    assert.match(toolText(await callTool(reader, 'request_upload', { deck: id, filename: 'a.png' })), /can read presentations but not change them/)
+    assert.match(toolText(await callTool(reader, 'add_image', { deck: id, slide: 1, data: png(5, 5).toString('base64'), alt: 'x' })), /can read presentations but not change them/)
   })
 
   it('reads the element guides without a deck', async () => {
