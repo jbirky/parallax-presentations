@@ -290,7 +290,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         ) : (<>
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
-            <h1>Create interactive and intuitive slides <span className="lp-hero-tail">for <em>complex concepts.</em></span></h1>
+            <h1>Create interactive<br />and intuitive slides&nbsp;for<br /><em>complex concepts.</em></h1>
             <div className="lp-ctas">
               {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
@@ -313,7 +313,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
 
           <section className="lp-band lp-light" id="features" aria-labelledby="lp-features">
             <div className="lp-wrap">
-              <div className="lp-head">
+              <div className="lp-head lp-head-line">
                 <div className="lp-label">What sets it apart</div>
                 <h2 id="lp-features">Slides that work like <em>your research</em></h2>
                 <p>Your data, your references and your code are part of the talk, not pasted into it. Each of these is in Parallax today.</p>
