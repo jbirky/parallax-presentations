@@ -153,7 +153,7 @@ describe('AI access tokens', { skip }, () => {
     const tools = (await rpc(secret, 'tools/list')).body.result.tools
     const names = tools.map(x => x.name)
     assert.deepEqual(names.slice(0, 4), ['list_decks', 'create_deck', 'list_templates', 'list_themes'])
-    for (const name of ['get_deck', 'get_slide', 'render_slide', 'render_deck', 'check_deck', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets', 'request_upload', 'add_image']) assert.ok(names.includes(name), name)
+    for (const name of ['get_deck', 'get_slide', 'render_slide', 'render_deck', 'check_deck', 'show_deck', 'add_slide', 'apply_edits', 'get_element_guide', 'list_datasets', 'request_upload', 'add_image', 'add_dataset']) assert.ok(names.includes(name), name)
     assert.ok(!names.includes('deck_preview'))
     const byName = Object.fromEntries(tools.map(x => [x.name, x]))
     assert.deepEqual(byName.get_slide.inputSchema.required, ['deck', 'slide'])
@@ -347,6 +347,40 @@ describe('AI access tokens', { skip }, () => {
     const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
     assert.match(toolText(await callTool(reader, 'request_upload', { deck: id, filename: 'a.png' })), /can read presentations but not change them/)
     assert.match(toolText(await callTool(reader, 'add_image', { deck: id, slide: 1, data: png(5, 5).toString('base64'), alt: 'x' })), /can read presentations but not change them/)
+  })
+
+  it('adds data as datasets, inline or uploaded, that graphs plot by name', async () => {
+    const me = t.user('data')
+    const id = await createDeck(me, 'Planets talk', { slides: SLIDES })
+    const { secret } = (await makeToken(me)).body
+    const csv = 'period,mass\n1.5,0.8\n3.2,1.4\n10.1,2.2\n'
+    const added = await callTool(secret, 'add_dataset', { deck: id, name: 'planets', data: csv })
+    assert.equal(added.body.result.isError, undefined, toolText(added))
+    assert.match(toolText(added), /^Added the dataset "planets" to the presentation\.\n\n## planets\n\n3 rows/)
+    assert.match(toolText(added), /\| period \| float \| 1\.5 to 10\.1 \|/)
+    // A name already used gets _2, never replacing the person's dataset
+    const again = toolText(await callTool(secret, 'add_dataset', { deck: id, name: 'Planets', data: csv }))
+    assert.match(again, /^Added the dataset "planets_2" to the presentation \(the name graphs plot it by\)/)
+    assert.deepEqual((await call(me, 'GET', `/api/presentations/${id}/datasets`)).body.map(d => d.name).sort(), ['planets', 'planets_2'])
+    assert.match(toolText(await callTool(secret, 'list_datasets', { deck: id })), /Datasets this presentation can use \(2\)/)
+
+    // A graph plots it
+    const graph = await callTool(secret, 'add_element', { deck: id, slide: 1, type: 'graph', spec: { expressions: [{ data: { dataset: 'planets', x: 'period', y: 'mass', mark: 'points' } }] } })
+    assert.equal(graph.body.result.isError, undefined, toolText(graph))
+
+    assert.match(toolText(await callTool(secret, 'add_dataset', { deck: id, name: 'broken', data: '{not json', format: 'json' })), /^The data couldn't be read/)
+
+    // A data file through an upload address becomes a dataset too
+    const asked = toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'orbits.csv', name: 'orbits' }))
+    assert.match(asked, /Its answer is JSON with dataset/)
+    const address = /(\S+)$/.exec(asked.split('\n')[2])[1].replace('https://parallax-presentations.com', t.base)
+    const sent = await fetch(address, { method: 'PUT', body: 'a,b\n1,2\n3,4\n' })
+    assert.equal(sent.status, 201)
+    assert.deepEqual(await sent.json(), { dataset: 'orbits', rows: 2, columns: ['a', 'b'], next: 'Plot it with a Graph data line (get_element_guide with type graph); list_datasets describes it.' })
+    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'notes.docx' })), /takes pictures .* and data \(\.csv, \.tsv, \.json\)/)
+
+    const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
+    assert.match(toolText(await callTool(reader, 'add_dataset', { deck: id, name: 'x', data: csv })), /can read presentations but not change them/)
   })
 
   it('reads the element guides without a deck', async () => {

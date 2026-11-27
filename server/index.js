@@ -3021,7 +3021,45 @@ const mcpUploads = {
     return used + bytes > limit ? `The presentation's storage is full (${size(limit)} on the ${plan.name} plan), so the picture can't be added. The person can delete some files, or upgrade.` : null
   },
 }
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads }) : null
+// Data an AI adds (server/mcp/index.js's add_dataset and data uploads): a
+// dataset of the person's, as an upload under Tools › Datasets makes one,
+// shared with the deck's team when it's a team's, and linked to the deck.
+// Never replaces a dataset of theirs: a name in use gets _2, _3, ….
+const mcpDatasets = {
+  async add({ buffer, filename, name, deckId, userId, teamId }) {
+    const dir = path.join(os.tmpdir(), 'parallax-datasets')
+    fs.ensureDirSync(dir)
+    const tmp = path.join(dir, `${uuidv4()}${path.extname(filename).toLowerCase()}`)
+    fs.writeFileSync(tmp, buffer)
+    // What reading the file finds wrong with it, said to the AI
+    const problem = message => Object.assign(new Error(message), { dataProblem: true })
+    let result
+    try {
+      result = await ingestDataset(tmp, filename, { userId, localDir: DATA_DIR })
+    } catch (err) {
+      throw problem(`The data couldn't be read: ${err.message}`)
+    }
+    const base = datasetName(name || result.name).slice(0, 60) || 'data'
+    let unique = base
+    for (let i = 2; await storage.getDatasetByName(unique, userId); i++) unique = `${base}_${i}`
+    result.name = unique
+    let ds = await saveUpload(storage, result, userId, { previous: null, localDir: DATA_DIR })
+    if (teamId) {
+      try {
+        ds = await teamLibrary.shareDataset(storage, ds.id, userId, teamId)
+      } catch (err) {
+        if (err instanceof teams.TeamError) throw problem(`The dataset was made but couldn't join the team's: ${err.message}`)
+        throw err
+      }
+    }
+    await storage.linkDatasetToPresentation(deckId, ds.id, null)
+    return {
+      name: unique, rows: ds.rowCount ?? null, columns: (ds.columns || []).map(c => c.name),
+      description: await require('./mcp/datasets').describe(storage, ds, { ownerId: userId, localDir: DATA_DIR }),
+    }
+  },
+}
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads, datasetStore: mcpDatasets }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())

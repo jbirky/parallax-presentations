@@ -18,6 +18,10 @@ const IMAGE_TYPES = {
   svg: { ext: '.svg', mime: 'image/svg+xml' },
 }
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
+// Data request_upload takes, which becomes a dataset (add_dataset)
+const DATA_EXTENSIONS = ['.csv', '.tsv', '.json']
+// add_dataset's data, given inline: at most this many bytes
+const MAX_INLINE_DATA = 1024 * 1024
 // base64 in add_image: at most this many bytes once decoded
 const MAX_INLINE_BYTES = 2 * 1024 * 1024
 // An upload or a fetched picture: at most this, or the plan's file limit if
@@ -96,4 +100,4 @@ function uploadTickets({ ttlMs = 10 * 60 * 1000, perOwner = 20, now = Date.now }
   }
 }
 
-module.exports = { imageInfo, uploadTickets, IMAGE_TYPES, IMAGE_EXTENSIONS, MAX_INLINE_BYTES, MAX_IMAGE_BYTES }
+module.exports = { imageInfo, uploadTickets, IMAGE_TYPES, IMAGE_EXTENSIONS, DATA_EXTENSIONS, MAX_INLINE_BYTES, MAX_INLINE_DATA, MAX_IMAGE_BYTES }

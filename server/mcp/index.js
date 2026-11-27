@@ -80,7 +80,8 @@ const SLIDE_INPUT = ({
 const UPLOAD_INPUT = ({
   type: 'object',
   properties: {
-    filename: { type: 'string', minLength: 1, maxLength: 200, description: `The file's name, such as figure3.png: a picture (${images.IMAGE_EXTENSIONS.join(', ')})` },
+    filename: { type: 'string', minLength: 1, maxLength: 200, description: `The file's name, such as figure3.png or results.csv: a picture (${images.IMAGE_EXTENSIONS.join(', ')}) or data (${images.DATA_EXTENSIONS.join(', ')})` },
+    name: { type: 'string', minLength: 1, maxLength: 60, description: "For data: the dataset's name, which graphs plot it by (the file's name when left out)" },
   },
   required: ['filename'],
   additionalProperties: false,
@@ -100,6 +101,17 @@ const IMAGE_INPUT = ({
     height: { type: 'number', description: 'Height in pixels' },
   },
   required: ['slide', 'alt'],
+  additionalProperties: false,
+})
+
+const DATASET_INPUT = ({
+  type: 'object',
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 60, description: 'Its name, which graphs plot it by: letters, digits and underscores (others become underscores)' },
+    data: { type: 'string', minLength: 1, maxLength: images.MAX_INLINE_DATA, description: 'The data as text, up to 1 MB, with a header row for CSV and TSV. For a bigger file, use request_upload.' },
+    format: { type: 'string', enum: ['csv', 'tsv', 'json'], description: 'csv (the default), tsv, or json (an array of objects)' },
+  },
+  required: ['name', 'data'],
   additionalProperties: false,
 })
 
@@ -219,7 +231,7 @@ const noSlide = (deck, slide) => {
 // (createMcpRoute); local is this server's address for its own renderer, and
 // site the site's public origin. With viewer: false (the account server,
 // which no MCP App host reaches yet), show_deck gives the editor's link.
-function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage }, { local, site, viewer: live = true } = {}) {
+function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset }, { local, site, viewer: live = true } = {}) {
   const read = (name, title, description, input, run, more = {}) => ({ name, title, description, input, annotations: READ_ONLY, run, ...more })
   return [
     read('get_deck', 'Read the presentation outline',
@@ -309,11 +321,11 @@ function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, prev
     {
       name: 'request_upload',
       title: 'Get an address to upload a file',
-      description: "A one-time address for sending one picture from your computer to the presentation, good for 10 minutes: in a terminal, `curl -sS -T <file> <address>`. Its answer gives the upload's path, for add_image. For pictures on the web, give add_image their address instead.",
+      description: "A one-time address for sending one file from your computer to the presentation, good for 10 minutes: in a terminal, `curl -sS -T <file> <address>`. A picture's answer gives the upload's path, for add_image; a data file (CSV, TSV, JSON) becomes a dataset of the presentation's, which graphs plot by name. For pictures on the web, give add_image their address instead.",
       input: UPLOAD_INPUT,
       annotations: WRITE,
       write: true,
-      run: (link, { filename }) => requestUpload(link, filename, site),
+      run: (link, { filename, name }) => requestUpload(link, filename, site, name),
     },
     {
       name: 'add_image',
@@ -323,6 +335,15 @@ function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, prev
       annotations: WRITE,
       write: true,
       run: (link, input) => addImage(link, input),
+    },
+    {
+      name: 'add_dataset',
+      title: 'Add data',
+      description: "Add data to the presentation as a dataset, from CSV, TSV or JSON text up to 1 MB: graphs plot it by name (get_element_guide with type graph), and it shows under Tools › Datasets. It becomes one of the person's datasets; a name they already use gets _2, _3 added, never replacing theirs. Returns its columns, their ranges and first rows. For a bigger file, use request_upload.",
+      input: DATASET_INPUT,
+      annotations: WRITE,
+      write: true,
+      run: (link, input) => addDataset(link, input),
     },
     ...WRITE_TOOLS.map(([name, title, description]) => ({
       name, title, description, input: SCHEMAS[name],
@@ -419,7 +440,7 @@ const wantsMarkdown = req => req.query.format === 'md'
 // datasets' files are kept without R2. The route's leave(linkId) takes a
 // revoked link out of the avatars, and its preview serves the viewer's
 // /ai-preview/:token.
-function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck, uploads, fetchImage = safeFetch }) {
+function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck, uploads, datasetStore, fetchImage = safeFetch }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -630,16 +651,18 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   const fileLimit = access => Math.min(images.MAX_IMAGE_BYTES, planFor(access.ownerPlan).maxFileBytes || images.MAX_IMAGE_BYTES)
   const megabytes = n => `${Math.round(n / 1024 / 1024 * 10) / 10} MB`
 
-  async function requestUpload(link, filename, site) {
+  async function requestUpload(link, filename, site, name) {
     if (!uploads) return failure('This Parallax server can\'t take uploads through AI tools.')
     if (!(await loadDeck(link))) return failure(goneOf(link))
     const why = await cantWrite(link)
     if (why) return failure(why)
     const ext = require('path').extname(filename).toLowerCase()
-    if (!images.IMAGE_EXTENSIONS.includes(ext)) return failure(`request_upload takes pictures: ${images.IMAGE_EXTENSIONS.join(', ')}. Turn a PDF figure into a PNG first (for example pdftoppm -png -r 200).`)
+    const data = images.DATA_EXTENSIONS.includes(ext)
+    if (!data && !images.IMAGE_EXTENSIONS.includes(ext)) return failure(`request_upload takes pictures (${images.IMAGE_EXTENSIONS.join(', ')}) and data (${images.DATA_EXTENSIONS.join(', ')}). Turn a PDF figure into a PNG first (for example pdftoppm -png -r 200).`)
+    if (data && !datasetStore) return failure('This Parallax server can\'t take data through AI tools.')
     const access = await accessOf(link)
     if (!access) return failure(goneOf(link))
-    const ticket = tickets.make(link.id, { link, access, filename })
+    const ticket = tickets.make(link.id, { link, access, filename, data, name })
     if (!ticket) return failure('There are 20 upload addresses waiting to be used already. Use those, or wait 10 minutes.')
     const address = `${site}/mcp/upload/${ticket}`
     return text([
@@ -647,7 +670,9 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       '',
       `curl -sS -T ${JSON.stringify(filename)} ${address}`,
       '',
-      'Its answer is JSON with upload, the path to give add_image, and the picture\'s width and height in pixels.',
+      data
+        ? 'Its answer is JSON with dataset, the name graphs plot it by, its rows and its columns.'
+        : 'Its answer is JSON with upload, the path to give add_image, and the picture\'s width and height in pixels.',
     ].join('\n'))
   }
 
@@ -702,6 +727,43 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     return write(link, [{ op: 'add_image', slide, src, alt, ...(fit && { fit }), ...(size && { size }), x, y, width, height }], { internal: true })
   }
 
+  // The person whose dataset an AI's data becomes: a token's person, or a
+  // link's deck owner; on a team's deck, it's shared with the team
+  async function addData(link, access, { buffer, filename, name }) {
+    const userId = link.userId || link.ownerId
+    const plan = link.userPlan ?? link.ownerPlan
+    const full = await uploads.room(access.teamId ? access : { ownerId: userId, ownerPlan: plan }, buffer.length)
+    if (full) throw Object.assign(new Error(full), { dataProblem: true })
+    // A problem with the data itself comes back as err.dataProblem
+    const added = await datasetStore.add({ buffer, filename, name, deckId: link.deckId, userId, teamId: access.teamId })
+    touch(link, {})
+    return added
+  }
+
+  async function addDataset(link, { name, data, format = 'csv' }) {
+    if (!uploads || !datasetStore) return failure('This Parallax server can\'t take data through AI tools.')
+    if (!(await loadDeck(link))) return failure(goneOf(link))
+    const why = await cantWrite(link)
+    if (why) return failure(why)
+    const buffer = Buffer.from(String(data), 'utf8')
+    if (buffer.length > images.MAX_INLINE_DATA) return failure('add_dataset takes data up to 1 MB. Send a bigger file with request_upload.')
+    const access = await accessOf(link)
+    if (!access) return failure(goneOf(link))
+    try {
+      const added = await addData(link, access, { buffer, filename: `${name}.${format}`, name })
+      return text([
+        `Added the dataset "${added.name}" to the presentation${added.name !== name.toLowerCase() ? ` (the name graphs plot it by)` : ''}.`,
+        '',
+        added.description,
+        '',
+        'Plot it with a Graph data line, naming this dataset and its columns (get_element_guide with type graph).',
+      ].join('\n'))
+    } catch (err) {
+      if (err.dataProblem) return failure(err.message)
+      throw err
+    }
+  }
+
   // PUT /mcp/upload/<ticket>: the file a request_upload address is for, as
   // its body (curl -T). Answers JSON: { upload, type, width, height, bytes }.
   async function uploadRoute(req, res) {
@@ -730,6 +792,16 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
         chunks.push(chunk)
       }
       const bytes = Buffer.concat(chunks)
+      if (found.data) {
+        if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
+        try {
+          const added = await addData(link, access, { buffer: bytes, filename, name: found.name })
+          return res.status(201).json({ dataset: added.name, rows: added.rows, columns: added.columns, next: 'Plot it with a Graph data line (get_element_guide with type graph); list_datasets describes it.' })
+        } catch (err) {
+          if (err.dataProblem) return res.status(422).json({ error: err.message })
+          throw err
+        }
+      }
       const info = images.imageInfo(bytes)
       if (!info) return res.status(415).json({ error: 'That isn\'t a PNG, JPEG, GIF, WebP or SVG picture.' })
       if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
@@ -797,7 +869,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     }
   }
 
-  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage }
+  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset }
   const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })

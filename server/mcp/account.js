@@ -141,7 +141,7 @@ function createAccountRoute({ storage, tools, deckTools, origin, createDeck }) {
     const access = id && await presentationAccess(storage, id, account.userId)
     if (!access) return { error: `There's no presentation "${named}" that ${account.name} can open. list_decks lists the ones it can.` }
     const link = {
-      id: account.id, tokenId: account.id, name: account.name, userId: account.userId,
+      id: account.id, tokenId: account.id, name: account.name, userId: account.userId, userPlan: account.userPlan,
       deckId: id, ownerId: access.ownerId, ownerPlan: access.ownerPlan, role: access.role,
       gone: `The presentation "${named}" is gone, or can't be opened any more. list_decks lists the ones that can.`,
     }
