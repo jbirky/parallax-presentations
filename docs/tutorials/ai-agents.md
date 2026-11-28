@@ -8,7 +8,8 @@ There are three ways to connect one:
 |---------|--------------|--------------------|
 | Claude Code | The Parallax plugin and an AI access token | Your whole account |
 | Another agent or MCP client | Your account's MCP server, `/mcp`, and an AI access token | Your whole account |
-| Claude or ChatGPT in a browser | An [AI collaborator link](./ai-collaborators.md) | One presentation |
+| Claude or ChatGPT in a browser | Your account's MCP server, `/mcp`, by signing in | Your whole account |
+| Claude or ChatGPT, for one presentation | An [AI collaborator link](./ai-collaborators.md) | One presentation |
 
 This tutorial sets up the first, then shows the others. Whichever you use, the agent appears in the presentation's avatars, its changes show up as it makes them, and a version is saved before it starts, so you can undo its work from **History**.
 
@@ -136,6 +137,20 @@ The server describes its tools to the agent. Among them:
 | `request_upload`, `add_image`, `add_dataset` | Send pictures and data files from the agent's computer |
 | `check_deck`, `render_slide`, `render_deck` | Find problems on every slide, and see slides as they're presented |
 
+## In claude.ai or ChatGPT: your whole account
+
+A chat app can't send a token, so it signs you in to Parallax instead:
+
+1. In claude.ai, open **Customize › Connectors › Add › Add custom connector**. Name it Parallax and give `https://parallax-presentations.com/mcp` as its address.
+2. Click **Connect**. Parallax's sign-in opens: sign in, then allow the app to use your account.
+3. In a chat, ask for a talk. Claude gets the same tools the plugin uses.
+
+For the plugin's skills in claude.ai, download the skill zips from the [plugin's latest release](https://github.com/jbirky/parallax-agent/releases/latest) and upload each one under **Customize › Skills**, with **+ › Create skill › Upload a skill**. Skills need code execution, which is under **Settings › Capabilities**.
+
+In ChatGPT, connectors that change things are for Business and Enterprise workspaces, added by an admin: a custom MCP server with that address, and OAuth as its authentication.
+
+Each app you connect shows in **AI access**, under **Connected apps**, with when it was last used. A connected app can make and change presentations. To stop it, turn it off there: it loses access at once, until you allow it again.
+
 ## In Claude or ChatGPT: one presentation
 
 To work on one presentation in a chat app, open it, click **Share**, choose **AI collaborator link…**, and add the link to the app as a connector. [AI Collaborators](./ai-collaborators.md) has the steps for each app. A link reaches only that presentation, and needs no token.
@@ -145,7 +160,7 @@ To work on one presentation in a chat app, open it, click **Share**, choose **AI
 - **Undo:** a version is saved before each session of changes, named after the token, such as "Before Claude Code's edits". Restore it from **History**.
 - **Read only:** a token made without **Can make and change presentations** can read your presentations but not change them.
 - **Plan limits:** a new presentation counts toward your plan. At the limit, the agent is refused rather than making one that would turn your oldest presentation read-only.
-- **Revoke:** in **AI access**, click the trash icon next to a token. The agent loses access at once and leaves the avatars.
+- **Revoke:** in **AI access**, click the trash icon next to a token, or the power icon next to a connected app. The agent loses access at once and leaves the avatars.
 - **What it can't add yet:** video, molecules and plugins. The agent leaves a note on the slide for you to add them in the editor.
 
 ## Troubleshooting
@@ -157,3 +172,4 @@ To work on one presentation in a chat app, open it, click **Share**, choose **AI
 | The Parallax tools don't appear in Claude Code | Run `/mcp` and check that the plugin's server is connected; reconnect it from there |
 | A change is refused because someone is typing | Someone is editing that text box. The agent tries again later or works on another slide |
 | A new presentation is refused | You're at your plan's limit. Delete one you no longer need, or ask the agent to work in an existing one |
+| A chat app says Parallax turned it off | You turned it off under **AI access**. Click **Allow again** next to it there |

@@ -55,3 +55,9 @@ A new presentation counts toward your plan like any other. When you're at your p
 ## Revoking a token
 
 Open **AI access** again and click the trash icon next to the token. The agent using it loses access at once and leaves the avatars.
+
+## Connected apps
+
+Chat apps such as claude.ai and ChatGPT don't use a token: you add `https://parallax-presentations.com/mcp` to the app as a connector, and sign in to Parallax when it asks. The [AI Agents](./ai-agents.md#in-claude-ai-or-chatgpt-your-whole-account) tutorial has the steps.
+
+Each app you sign in shows under **Connected apps** in **AI access**, with its name, its site and when it was last used. A connected app can make and change presentations, as a token with **Can make and change presentations** can. Click the power icon next to an app to turn it off: it loses access at once. **Allow again** lets it back in.
