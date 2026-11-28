@@ -101,16 +101,20 @@ The commands are shortcuts. You can also just ask, and Claude uses the plugin's 
 | `/parallax:new-talk` | A brief, an outline with minutes, then the slides, checked |
 | `/parallax:from-paper` | A talk from an arXiv paper, a PDF or LaTeX source, with the paper's own figures |
 | `/parallax:review` | Reviews a presentation whole and ranks what to fix |
+| `/parallax:theme` | Designs a theme from a description, a brand, a picture or a web page, checks it on your slides and saves it to your theme library |
+| `/parallax:new-plugin` | Starts a community plugin, a new kind of slide element, from the template, and submits it for review when you're ready |
 | `/parallax:connect` | Checks the connection and says how to fix it |
 | `building-a-talk` | The workflow: audience, outline, layouts, speaker notes, checks |
 | `paper-to-talk`, `paper-reader` | Reads a paper into a talk brief and puts its figures on slides with credit |
-| `scientific-figures`, `figure-builder` | Turns your data or plotting script into a live graph, or a picture when it can't |
+| `scientific-figures`, `figure-builder` | Turns your data, plotting script or matplotlib figure (SVG or PDF) into a live graph, or a picture when it can't |
 | `diagrams` | Picks the built-in element for a subject: graphs, circuits, Feynman, logic, free-body, Venn, timing, geometry, TikZ |
 | `math-and-notation` | Inline math, annotated equations, derivations and chemistry |
-| `deck-themes` | Picks a theme for the subject and audience, and adjusts colors, fonts and the stylesheet |
+| `deck-themes`, `theme-designer` | Picks a theme for the subject and audience, adjusts colors, fonts and the stylesheet, designs a look from a reference with its contrast checked, and keeps it in your theme library |
+| `beamer-migration` | Moves a LaTeX Beamer talk into Parallax: imports it, puts its figures in, and fixes what didn't carry over |
+| `parallax-plugins`, `plugin-developer` | Builds a community plugin from the template, checks it against Parallax's rules, and submits it for review |
 | `review-a-deck`, `deck-reviewer` | Checks every slide, looks at the whole deck, ranks fixes |
 
-The skills work everywhere. The `/parallax:` commands, the agents (`paper-reader`, `figure-builder`, `deck-reviewer`) and the render gate run in Claude Code and Cowork; in claude.ai, Claude does the agents' work in the chat.
+The skills work everywhere. The `/parallax:` commands, the agents (`paper-reader`, `figure-builder`, `deck-reviewer`, `theme-designer`, `plugin-developer`) and the render gate run in Claude Code and Cowork; in claude.ai, Claude does the agents' work in the chat.
 
 The plugin is open source, under the MIT license: [github.com/jbirky/parallax-agent](https://github.com/jbirky/parallax-agent).
 
