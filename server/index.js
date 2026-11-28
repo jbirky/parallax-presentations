@@ -3051,6 +3051,29 @@ const mcpUploads = {
     const file = path.resolve(UPLOADS_DIR, rest)
     return file.startsWith(path.resolve(UPLOADS_DIR) + path.sep) && fs.existsSync(file)
   },
+  // An upload's bytes, for import_plot to read a figure sent with
+  // request_upload; null when it's gone or over maxBytes
+  async read(deckId, src, maxBytes) {
+    if (!(await mcpUploads.exists(deckId, src))) return null
+    const rest = src.slice('/uploads/'.length)
+    if (isR2Enabled()) {
+      const { rows } = await storage.query('SELECT storage_key FROM uploads WHERE filename = $1 AND presentation_id = $2 LIMIT 1', [rest, deckId])
+      if (!rows.length) return null
+      const { body, contentLength } = await streamFromR2(rows[0].storage_key)
+      if (contentLength && contentLength > maxBytes) { body.destroy?.(); return null }
+      const chunks = []
+      let got = 0
+      for await (const chunk of body) {
+        got += chunk.length
+        if (got > maxBytes) { body.destroy?.(); return null }
+        chunks.push(chunk)
+      }
+      return Buffer.concat(chunks)
+    }
+    const file = path.resolve(UPLOADS_DIR, rest)
+    if (fs.statSync(file).size > maxBytes) return null
+    return fs.readFileSync(file)
+  },
   async room(access, bytes) {
     const plan = planFor(access.ownerPlan)
     const size = n => `${Math.round(n / 1024 / 1024)} MB`

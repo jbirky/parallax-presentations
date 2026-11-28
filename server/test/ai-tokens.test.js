@@ -26,6 +26,10 @@ safeFetchModule.safeFetch = async (url, opts) => {
 const { DB, startCloudServer, until } = require('./helpers')
 const thumbnails = require('../services/slide-thumbnail')
 const pluginImport = require('../services/plugin-import')
+const fs = require('fs')
+const path = require('path')
+// The editor's Plot import's fixtures: figures saved from matplotlib
+const plotFixture = name => fs.readFileSync(path.join(__dirname, '../../client/src/utils/plotImport/fixtures', name))
 const { fakeGitHub, pluginFiles } = require('./fake-github')
 
 const skip = DB ? false : 'TEST_DATABASE_URL is not set'
@@ -383,7 +387,8 @@ describe('AI access tokens', { skip }, () => {
     assert.match(upload.upload, new RegExp(`^/uploads/${id}/figure-3-?[0-9a-f-]*\\.png$|^/uploads/${id}/[0-9a-f-]+\\.png$`))
     assert.deepEqual([upload.type, upload.width, upload.height], ['image/png', 800, 450])
     assert.equal((await put(png(10, 10))).status, 404, 'an address works once')
-    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'paper.pdf' })), /takes pictures.*pdftoppm/)
+    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'paper.pdf' })), /import_plot[\s\S]*pdftoppm/)
+    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'paper.docx' })), /takes pictures.*matplotlib figures/)
 
     // Not a picture: refused, and nothing kept
     const notPicture = /(\S+)$/.exec(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'x.png' })).split('\n')[2])[1].replace('https://parallax-presentations.com', t.base)
@@ -447,7 +452,7 @@ describe('AI access tokens', { skip }, () => {
     const sent = await fetch(address, { method: 'PUT', body: 'a,b\n1,2\n3,4\n' })
     assert.equal(sent.status, 201)
     assert.deepEqual(await sent.json(), { dataset: 'orbits', rows: 2, columns: ['a', 'b'], next: 'Plot it with a Graph data line (get_element_guide with type graph); list_datasets describes it.' })
-    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'notes.docx' })), /takes pictures .* and data \(\.csv, \.tsv, \.json\)/)
+    assert.match(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'notes.docx' })), /takes pictures .*, data \(\.csv, \.tsv, \.json\) and matplotlib figures/)
 
     const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
     assert.match(toolText(await callTool(reader, 'add_dataset', { deck: id, name: 'x', data: csv })), /can read presentations but not change them/)
@@ -519,6 +524,66 @@ describe('AI access tokens', { skip }, () => {
       Object.assign(pluginImport, real)
       await pool.query('DELETE FROM plugins WHERE repo_owner = $1', [owner])
     }
+  })
+
+  it('imports a matplotlib figure as a graph of its data: SVG text, base64, or an uploaded PDF', async () => {
+    const me = t.user('plotter')
+    const id = await createDeck(me, 'Decay talk', { slides: SLIDES })
+    const { secret } = (await makeToken(me)).body
+    const live = await openLive(me, id)
+
+    const svg = plotFixture('decay.svg').toString('utf8')
+    const made = await callTool(secret, 'import_plot', { deck: id, slide: 1, data: svg, name: 'Decay' })
+    assert.equal(made.body.result.isError, undefined, toolText(made))
+    const said = toolText(made)
+    assert.match(said, /^Read an SVG figure from Matplotlib[^:]*: x axis/)
+    assert.match(said, /model \(line, 45 points, #[0-9a-f]{6}, (as drawn, )?at click 1\)/)
+    assert.match(said, /measured \(points, 19 points, #[0-9a-f]{6}, at click 2\)/)
+    assert.match(said, /x axis "time \(s\)" from -0\.5 to 10\.5; y axis "signal \(V\)"/)
+    assert.match(said, /Its data is the dataset "decay" \(\d+ rows: model_x, model_y, measured_x, measured_y/)
+    assert.match(said, /Added a graph `[\w-]+` to slide 1/)
+    await until(() => live.deck().slides[0].elements.some(e => e.type === 'graph'), 'the graph to reach the open editor')
+    const graph = live.deck().slides[0].elements.find(e => e.type === 'graph')
+    assert.deepEqual(graph.expressions.map(e => [e.data.dataset, e.data.mark, e.step]).sort((a, b) => a[2] - b[2]), [['decay', 'line', 1], ['decay', 'points', 2]])
+    assert.equal(graph.background, 'transparent')
+    assert.ok(graph.width <= 840 && graph.y >= 130, JSON.stringify([graph.x, graph.y, graph.width, graph.height]))
+    assert.match(toolText(await callTool(secret, 'list_datasets', { deck: id })), /decay/)
+
+    // All with the slide, a layer left out; the dataset's name is taken, so it gets _2
+    const one = await callTool(secret, 'import_plot', { deck: id, slide: 1, data: plotFixture('decay.svg').toString('base64'), name: 'decay', steps: false, leaveOut: ['Model'], x: 40, y: 300, width: 300 })
+    assert.equal(one.body.result.isError, undefined, toolText(one))
+    assert.match(toolText(one), /model \(line, 45 points, #[0-9a-f]{6}, (as drawn, )?left out\)/)
+    assert.match(toolText(one), /dataset "decay_2" \(\d+ rows: measured_x, measured_y/)
+    await until(() => live.deck().slides[0].elements.filter(e => e.type === 'graph').length === 2, 'the second graph')
+    const second = live.deck().slides[0].elements.filter(e => e.type === 'graph')[1]
+    assert.deepEqual(second.expressions.map(e => [e.data.dataset, e.step]), [['decay_2', undefined]])
+    assert.deepEqual([second.x, second.y, second.width], [40, 300, 300])
+    assert.match(toolText(await callTool(secret, 'import_plot', { deck: id, slide: 1, data: svg, leaveOut: ['fit'] })), /no layer called "fit"\. Its layers: model, measured|no layer called "fit"\. Its layers: measured, model/)
+
+    // A PDF, sent with request_upload
+    const asked = toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'decay.pdf' }))
+    const address = /curl -sS -T "decay.pdf" (\S+)/.exec(asked)[1].replace('https://parallax-presentations.com', t.base)
+    const sent = await fetch(address, { method: 'PUT', body: plotFixture('decay.pdf') })
+    assert.equal(sent.status, 201)
+    const { upload, type } = await sent.json()
+    assert.equal(type, 'application/pdf')
+    const fromPdf = await callTool(secret, 'import_plot', { deck: id, slide: 1, upload })
+    assert.equal(fromPdf.body.result.isError, undefined, toolText(fromPdf))
+    assert.match(toolText(fromPdf), /^Read a PDF figure/)
+    const notPdf = /curl -sS -T "x.pdf" (\S+)/.exec(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'x.pdf' })))[1].replace('https://parallax-presentations.com', t.base)
+    assert.equal((await fetch(notPdf, { method: 'PUT', body: png(10, 10) })).status, 415)
+
+    // A figure of two panels: the main one, unless another is asked for
+    const pair = plotFixture('pair.svg').toString('utf8')
+    assert.match(toolText(await callTool(secret, 'import_plot', { deck: id, slide: 1, data: pair, name: 'pair' })), /The figure has 2 panels; this is the main one\. Give panel for another: 1: .+; 2: /)
+    assert.match(toolText(await callTool(secret, 'import_plot', { deck: id, slide: 1, data: pair, panel: 9 })), /There's no panel 9\. The figure's panels: 1: /)
+
+    // Not figures
+    assert.match(toolText(await callTool(secret, 'import_plot', { deck: id, slide: 1, data: png(10, 10).toString('base64') })), /isn't an SVG or a PDF/)
+    const blank = await callTool(secret, 'import_plot', { deck: id, slide: 1, data: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="5" height="5"/></svg>' })
+    assert.equal(blank.body.result.isError, true)
+    assert.match(toolText(blank), /numbered ticks/)
+    assert.match(toolText(await callTool(secret, 'import_plot', { deck: id, slide: 1, data: svg, url: 'https://pictures.test/chart.png' })), /Give the figure one way/)
   })
 
   it('reads the element guides without a deck', async () => {

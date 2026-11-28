@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// Written by scripts/build-mcp-shared.js from client/src/utils/beamer.js, client/src/utils/beamerSlides.js, client/src/utils/bibtexParser.js, client/src/utils/graphParser.js, client/src/utils/graphPage.js, client/src/utils/equationTerms.js, client/src/utils/circuitParts.js, client/src/utils/circuitDiagram.js, client/src/utils/circuitSolve.js, client/src/utils/feynmanDiagram.js, client/src/utils/logicParts.js, client/src/utils/logicDiagram.js, client/src/utils/freebodySolve.js, client/src/utils/freebodyDiagram.js, client/src/utils/vennDiagram.js, client/src/utils/timingDiagram.js, client/src/utils/geometryDiagram.js, client/src/utils/geometryEngine.js, client/src/utils/periodicTable.js, client/src/utils/harmonicsView.js, client/src/utils/sphericalHarmonics.js, client/src/utils/textStyles.js, client/src/utils/scopeCss.js, client/src/utils/customTheme.js
+// Written by scripts/build-mcp-shared.js from client/src/utils/beamer.js, client/src/utils/beamerSlides.js, client/src/utils/bibtexParser.js, client/src/utils/graphParser.js, client/src/utils/graphPage.js, client/src/utils/equationTerms.js, client/src/utils/circuitParts.js, client/src/utils/circuitDiagram.js, client/src/utils/circuitSolve.js, client/src/utils/feynmanDiagram.js, client/src/utils/logicParts.js, client/src/utils/logicDiagram.js, client/src/utils/freebodySolve.js, client/src/utils/freebodyDiagram.js, client/src/utils/vennDiagram.js, client/src/utils/timingDiagram.js, client/src/utils/geometryDiagram.js, client/src/utils/geometryEngine.js, client/src/utils/periodicTable.js, client/src/utils/harmonicsView.js, client/src/utils/sphericalHarmonics.js, client/src/utils/textStyles.js, client/src/utils/scopeCss.js, client/src/utils/customTheme.js, client/src/utils/plotImport/svgReader.js, client/src/utils/plotImport/pdfReader.js, client/src/utils/plotImport/plotModel.js, client/src/utils/plotImport/toGraph.js
 // and what they import; edit those, then run the script.
 
 var __create = Object.create;
@@ -5820,6 +5820,7 @@ __export(shared_exports, {
   HARMONICS_TEMPLATES: () => HARMONICS_TEMPLATES,
   HEADING_WEIGHTS: () => HEADING_WEIGHTS,
   HV: () => HV,
+  IMPORT_WIDTH: () => IMPORT_WIDTH,
   INTERACTIONS: () => INTERACTIONS,
   LABEL_STYLES: () => LABEL_STYLES,
   LOGIC_FIELDS: () => LOGIC_FIELDS,
@@ -5832,6 +5833,7 @@ __export(shared_exports, {
   MIN_SIZE: () => MIN_SIZE,
   PERIODIC_FIELDS: () => PERIODIC_FIELDS,
   PT: () => PT,
+  PlotError: () => PlotError,
   SH: () => SH,
   SIZE_KEYS: () => SIZE_KEYS,
   TERM_ID: () => TERM_ID,
@@ -5852,6 +5854,7 @@ __export(shared_exports, {
   cleanTextStyles: () => cleanTextStyles,
   cleanThemeDoc: () => cleanThemeDoc,
   createMathParser: () => createMathParser,
+  defaultChoices: () => defaultChoices,
   defaultEquation: () => defaultEquation,
   defaultGraph: () => defaultGraph,
   defaultGraph3d: () => defaultGraph3d,
@@ -5873,11 +5876,17 @@ __export(shared_exports, {
   logicModel: () => logicModel,
   looseEnds: () => looseEnds,
   mergeBibliography: () => mergeBibliography,
+  panelNamed: () => panelNamed,
+  panelPlot: () => panelPlot,
   parseBibtex: () => parseBibtex,
   parseTiming: () => parseTiming,
   periodicBox: () => periodicBox,
   plainText: () => plainText,
+  plotFromDrawing: () => plotFromDrawing,
+  plotToGraph: () => plotToGraph,
   readBeamer: () => readBeamer,
+  readPdfDrawing: () => readPdfDrawing,
+  readSvgDrawing: () => readSvgDrawing,
   scopeThemeCss: () => scopeThemeCss,
   sentenceParts: () => sentenceParts,
   solveCircuit: () => solveCircuit,
@@ -7342,16 +7351,16 @@ function parseTabular(env, s, st, scope, raw) {
     if (rows.length === 1 && hadRule && /^\s*\\(midrule|hline|cmidrule)/.test(line)) ruleAfterFirst = true;
     if (!body.trim()) continue;
     const cells = [];
-    for (let cell of splitTop(body, (t, k) => t[k] === "&" ? 1 : 0)) {
+    for (let cell2 of splitTop(body, (t, k) => t[k] === "&" ? 1 : 0)) {
       let span = 1;
-      const mc = /^\s*\\multicolumn\s*\{(\d+)\}\s*\{[^}]*\}\s*/.exec(cell);
+      const mc = /^\s*\\multicolumn\s*\{(\d+)\}\s*\{[^}]*\}\s*/.exec(cell2);
       if (mc) {
         span = +mc[1];
-        cell = (reqArg(cell, mc[0].length) || { content: "" }).content;
+        cell2 = (reqArg(cell2, mc[0].length) || { content: "" }).content;
       }
-      const mr = /^\s*\\multirow\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*/.exec(cell);
-      if (mr) cell = (reqArg(cell, mr[0].length) || { content: "" }).content;
-      cells.push({ tex: cell.trim(), runs: inlineRuns(cell.trim(), st, scope.marks), span });
+      const mr = /^\s*\\multirow\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*(\[[^\]]*\])?\s*\{[^}]*\}\s*/.exec(cell2);
+      if (mr) cell2 = (reqArg(cell2, mr[0].length) || { content: "" }).content;
+      cells.push({ tex: cell2.trim(), runs: inlineRuns(cell2.trim(), st, scope.marks), span });
     }
     rows.push(cells);
   }
@@ -7624,12 +7633,12 @@ function parseBlocks(s, st, scope) {
           const o = optArg(rest, 0);
           if (o) rest = rest.slice(o.end);
         }
-        const area = (t, k2) => {
+        const area2 = (t, k2) => {
           const m = /^\\onslide\s*<[^<>]*>/.exec(t.slice(k2, k2 + 40));
           return m ? m[0].length : 0;
         };
-        const parts = splitTop(rest, area);
-        const heads = topLevel(rest, area);
+        const parts = splitTop(rest, area2);
+        const heads = topLevel(rest, area2);
         blocks.push(...parseBlocks(parts[0], st, scope));
         heads.forEach((h, n) => {
           const spec2 = /<([^>]*)>/.exec(rest.slice(h.at, h.at + h.len));
@@ -8157,18 +8166,18 @@ function readFrame(it, doc, ctx) {
   const runsVis = (runs) => (runs || []).forEach((r) => {
     if (r.m?.vis) cumulative = false;
   });
-  const walk = (bs) => bs.forEach((b) => {
+  const walk3 = (bs) => bs.forEach((b) => {
     visit(b.vis);
     if (b.runs) runsVis(b.runs);
     if (b.items) b.items.forEach((x) => {
       visit(x.vis);
-      if (x.blocks) walk(x.blocks);
+      if (x.blocks) walk3(x.blocks);
     });
-    if (b.blocks) walk(b.blocks);
-    if (b.cols) b.cols.forEach((c) => walk(c.blocks));
+    if (b.blocks) walk3(b.blocks);
+    if (b.cols) b.cols.forEach((c) => walk3(c.blocks));
     if (b.rows) b.rows.forEach((r) => r.forEach((c) => runsVis(c.runs)));
   });
-  walk(blocks);
+  walk3(blocks);
   runsVis(titleRuns);
   runsVis(subtitleRuns);
   return {
@@ -9416,54 +9425,54 @@ function createMathParser() {
   }
   function freeVars(node, into, bound) {
     const out = into || /* @__PURE__ */ new Set();
-    const walk = (n) => {
+    const walk3 = (n) => {
       if (!n) return;
       switch (n.k) {
         case "var":
           if (!(n.n in CONSTANTS) && !(bound && bound.includes(n.n))) out.add(n.n);
           break;
         case "neg":
-          walk(n.a);
+          walk3(n.a);
           break;
         case "bin":
-          walk(n.a);
-          walk(n.b);
+          walk3(n.a);
+          walk3(n.b);
           break;
         case "call":
         case "ucall":
-          n.args.forEach(walk);
+          n.args.forEach(walk3);
           break;
         case "tuple":
-          n.items.forEach(walk);
+          n.items.forEach(walk3);
           break;
         case "piece":
           n.branches.forEach((b) => {
-            b.cond.parts.forEach(walk);
-            walk(b.value);
+            b.cond.parts.forEach(walk3);
+            walk3(b.value);
           });
-          walk(n.otherwise);
+          walk3(n.otherwise);
           break;
       }
     };
-    walk(node);
+    walk3(node);
     return out;
   }
   function usedFns(node, into) {
     const out = into || /* @__PURE__ */ new Set();
-    const walk = (n) => {
+    const walk3 = (n) => {
       if (!n) return;
       if (n.k === "ucall") out.add(n.f);
-      if (n.a) walk(n.a);
-      if (n.b) walk(n.b);
-      if (n.args) n.args.forEach(walk);
-      if (n.items) n.items.forEach(walk);
+      if (n.a) walk3(n.a);
+      if (n.b) walk3(n.b);
+      if (n.args) n.args.forEach(walk3);
+      if (n.items) n.items.forEach(walk3);
       if (n.branches) n.branches.forEach((b) => {
-        b.cond.parts.forEach(walk);
-        walk(b.value);
+        b.cond.parts.forEach(walk3);
+        walk3(b.value);
       });
-      if (n.otherwise) walk(n.otherwise);
+      if (n.otherwise) walk3(n.otherwise);
     };
-    walk(node);
+    walk3(node);
     return out;
   }
   const approxEqual = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
@@ -12324,10 +12333,10 @@ function truthTable(m) {
   if (!ins.length || !outs.length) return { why: "Add inputs and outputs for a truth table." };
   if (ins.length > 6) return { why: "More than six inputs: too many rows for a truth table." };
   if (hasFeedback(m)) return { why: "It has feedback, so it can remember: no truth table." };
-  const flat = everythingAtOnce(m), rows = [];
+  const flat2 = everythingAtOnce(m), rows = [];
   for (let k = 0; k < 2 ** ins.length; k++) {
     const vals = ins.map((p, i) => k >> ins.length - 1 - i & 1);
-    const st = simulateLogic(flat, 0, new Map(ins.map((p, i) => [p.id, vals[i]])))[0];
+    const st = simulateLogic(flat2, 0, new Map(ins.map((p, i) => [p.id, vals[i]])))[0];
     rows.push([...vals, ...outs.map((o) => st.at[`${o.id}.in`])]);
   }
   return { ins, outs, rows };
@@ -12509,10 +12518,10 @@ function drawLogic(m, o = {}) {
     grow((b.x0 + b.x1) / 2 * u, -(b.y0 + b.y1) / 2 * u, (b.x1 - b.x0) / 2 * u, (b.y1 - b.y0) / 2 * u);
   }
   for (const n of m.nodes) grow(n.x * u, -n.y * u);
-  const flat = everythingAtOnce(m);
+  const flat2 = everythingAtOnce(m);
   const tt = o.table ? truthTable(m) : null;
   const deep = logicDepths(m);
-  const states = deck != null ? simulateLogic(m, max) : step == null ? simulateLogic(flat, 0) : simulateLogic(m, step);
+  const states = deck != null ? simulateLogic(m, max) : step == null ? simulateLogic(flat2, 0) : simulateLogic(m, step);
   const signals = (s, state, prev, model) => {
     const E = endpoints(model, s);
     const shown = (x) => s == null || (x.step || 0) <= s;
@@ -12562,7 +12571,7 @@ function drawLogic(m, o = {}) {
   let layers = "";
   if (deck != null) {
     for (let s = 0; s <= max; s++) layers += `<g data-fx-in="${s}-${s === max ? "" : s}">${signals(s, states[s], s ? states[s - 1] : null, m)}</g>`;
-  } else layers = signals(step, states[states.length - 1], null, step == null ? flat : m);
+  } else layers = signals(step, states[states.length - 1], null, step == null ? flat2 : m);
   let bases = "";
   for (const p of m.parts) {
     if (step != null && (p.step || 0) > step) continue;
@@ -14139,7 +14148,7 @@ function arrangement(shapes, box) {
       loops.push(loop);
     }
     if (m === 0 && box) loops.push([{ rect: box }]);
-    let area = 0;
+    let area2 = 0;
     const poly = [];
     for (const loop of loops) {
       const pts = [];
@@ -14157,11 +14166,11 @@ function arrangement(shapes, box) {
       }
       for (let k = 0; k < pts.length; k++) {
         const p = pts[k], q = pts[(k + 1) % pts.length];
-        area += (p[0] * q[1] - q[0] * p[1]) / 2;
+        area2 += (p[0] * q[1] - q[0] * p[1]) / 2;
       }
       poly.push(pts);
     }
-    regions.push({ m, loops, area: m === 0 && !box ? Infinity : area, poly });
+    regions.push({ m, loops, area: m === 0 && !box ? Infinity : area2, poly });
   }
   return { shapes, fns, arcs, regions };
 }
@@ -14905,9 +14914,9 @@ function parseTiming(source) {
   if (json.signal) {
     if (!Array.isArray(json.signal)) return { error: 'signal must be a list: signal: [ { name: "clk", wave: "p...." } ]' };
     let count = 0, bad = null;
-    const walk = (list) => list.forEach((s) => {
+    const walk3 = (list) => list.forEach((s) => {
       if (Array.isArray(s)) {
-        walk(s.slice(1));
+        walk3(s.slice(1));
         return;
       }
       if (!s || typeof s !== "object") return;
@@ -14916,7 +14925,7 @@ function parseTiming(source) {
       else if (String(s.wave || "").length > LIMITS.wave) bad = bad || `${s.name || "A signal"}'s wave is ${s.wave.length} steps long; up to ${LIMITS.wave} are drawn`;
       if (s.data != null && !Array.isArray(s.data) && typeof s.data !== "string") bad = bad || `${s.name || "A signal"}'s data must be a list of labels`;
     });
-    walk(json.signal);
+    walk3(json.signal);
     if (bad) return { error: bad };
     if (count > LIMITS.signals) return { error: `${count} signals; a diagram can have up to ${LIMITS.signals}.` };
     const hs = Number(json.config?.hscale);
@@ -15008,14 +15017,14 @@ function plain(tree, { prefix, dark }) {
   const markerIds = new Set(markers.map((m) => attrsOf(m).id));
   const fixUrls = (v) => String(v).replace(/url\(#([\w-]+)\)/g, (m, id) => markerIds.has(id) ? `url(#${prefix}-${id})` : "none");
   let depth = 0;
-  const walk = (n) => {
+  const walk3 = (n) => {
     if (!Array.isArray(n)) return n;
     if (n[0] === "style" || n[0] === "defs") return null;
     if (n[0] === "use") {
       const a2 = attrsOf(n) || {}, id2 = String(a2["xlink:href"] || a2.href || "").replace(/^#/, ""), brick = bricks[id2];
       if (!brick || depth > 8) return null;
       depth++;
-      const g = ["g", a2.transform ? { transform: a2.transform } : {}, ...kidsOf(clone(brick)).map(walk).filter(Boolean)];
+      const g = ["g", a2.transform ? { transform: a2.transform } : {}, ...kidsOf(clone(brick)).map(walk3).filter(Boolean)];
       depth--;
       return g;
     }
@@ -15040,9 +15049,9 @@ function plain(tree, { prefix, dark }) {
       if (k === "xml:space" || k === "xmlns:xlink") delete a[k];
     }
     if (tag === "rect" && /fill:\s*white/.test(a.style || "") && /stroke:\s*none/.test(a.style || "")) return null;
-    return [tag, a, ...kidsOf(n).map(walk).filter((x) => x != null)];
+    return [tag, a, ...kidsOf(n).map(walk3).filter((x) => x != null)];
   };
-  const out = walk(tree);
+  const out = walk3(tree);
   const defs = markers.map((m) => {
     const c = clone(m), a = attrsOf(c);
     a.id = `${prefix}-${a.id}`;
@@ -16761,14 +16770,14 @@ function periodicRuntime(ROWS) {
   function boxesSvg(z, B, s, th) {
     var p = parse51(z), all = fullSubs(z), subs = s.showCore ? all : p.subs.slice(), front = all[all.length - 1];
     var h = header(B, "Orbital boxes · " + unpaired(z) + " unpaired", th);
-    var area = { x: B.x, y: B.y + 20, w: B.w, h: B.h - 20 };
+    var area2 = { x: B.x, y: B.y + 20, w: B.w, h: B.h - 20 };
     var core = !s.showCore && p.core ? "[" + p.core + "]" : null;
     var sizes = [18, 15, 13, 11, 9, 7], place = null, bw = 7;
     for (var si = 0; si < sizes.length && !place; si++) {
       bw = sizes[si];
       var bh = bw + 4, x = 0, y = 0, items = [], rowH = 12 + bh + 7;
       var add2 = function(w, item) {
-        if (x > 0 && x + w > area.w) {
+        if (x > 0 && x + w > area2.w) {
           x = 0;
           y += rowH;
         }
@@ -16781,10 +16790,10 @@ function periodicRuntime(ROWS) {
       subs.forEach(function(sub2) {
         add2((2 * sub2.l + 1) * bw + 1, { sub: sub2 });
       });
-      if (y + rowH - 7 <= area.h || si === sizes.length - 1) place = { items, bh };
+      if (y + rowH - 7 <= area2.h || si === sizes.length - 1) place = { items, bh };
     }
     place.items.forEach(function(it) {
-      var X = area.x + it.x, Y = area.y + it.y;
+      var X = area2.x + it.x, Y = area2.y + it.y;
       if (it.core) {
         var cw = textW(core, 11, 0.6) + 12;
         h += '<rect x="' + n17(X) + '" y="' + n17(Y + 12) + '" width="' + n17(cw) + '" height="' + n17(place.bh) + '" rx="4" fill="' + th.code + '"/>';
@@ -16808,8 +16817,8 @@ function periodicRuntime(ROWS) {
   function shellsSvg(z, B, th, animate) {
     var counts = shellCounts(z), N3 = counts.length, e = EL[z];
     var h = header(B, "Bohr shells · " + counts.join(" · "), th);
-    var area = { x: B.x, y: B.y + 16, w: B.w, h: B.h - 16 };
-    var R2 = Math.max(20, Math.min(area.h / 2 - 2, (area.w - 56) / 2)), cx = area.x + R2 + 2, cy = area.y + area.h / 2;
+    var area2 = { x: B.x, y: B.y + 16, w: B.w, h: B.h - 16 };
+    var R2 = Math.max(20, Math.min(area2.h / 2 - 2, (area2.w - 56) / 2)), cx = area2.x + R2 + 2, cy = area2.y + area2.h / 2;
     var rIn = Math.max(10, R2 * 0.28), nucleus = R2 * 0.17;
     h += '<circle cx="' + n17(cx) + '" cy="' + n17(cy) + '" r="' + n17(nucleus) + '" fill="' + hsl(CAT_HUE[e.cat], th.strongS, th.strongL) + '"/>';
     h += text(cx, cy + nucleus * 0.3, e.sym, ' text-anchor="middle" font-size="' + n17(nucleus * 0.85) + '" font-weight="700" fill="' + th.surface + '"');
@@ -16826,7 +16835,7 @@ function periodicRuntime(ROWS) {
         h += '<animateTransform attributeName="transform" type="rotate" from="' + from + " " + n17(cx) + " " + n17(cy) + '" to="' + (360 - from) + " " + n17(cx) + " " + n17(cy) + '" dur="' + dur + 's" repeatCount="indefinite"/>';
       }
       h += "</g>";
-      h += text(cx + R2 + 14, area.y + 12 + k * 15, "KLMNOPQ"[k] + " " + n, ' font-family="' + MONO2 + '" font-size="10.5" fill="' + (outer ? th.accent : th.muted) + '"');
+      h += text(cx + R2 + 14, area2.y + 12 + k * 15, "KLMNOPQ"[k] + " " + n, ' font-family="' + MONO2 + '" font-size="10.5" fill="' + (outer ? th.accent : th.muted) + '"');
     }
     return h;
   }
@@ -18417,7 +18426,7 @@ function harmonicsRuntime(SH2) {
       1
     ];
   }
-  function apply(M, p) {
+  function apply2(M, p) {
     var x = p[0], y = p[1], z = p[2];
     return [M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[3] * x + M[7] * y + M[11] * z + M[15]];
   }
@@ -18467,7 +18476,7 @@ function harmonicsRuntime(SH2) {
   function int7(v, lo, hi, dflt) {
     return Math.round(num8(v, lo, hi, dflt));
   }
-  function clean(o, base3) {
+  function clean2(o, base3) {
     var s = {};
     s.source = pick(o.source, SOURCES, base3.source);
     s.l = int7(o.l, 0, 60, base3.l);
@@ -18494,7 +18503,7 @@ function harmonicsRuntime(SH2) {
   }
   function normalize(el) {
     el = el || {};
-    var s = clean(el, DEFAULTS2);
+    var s = clean2(el, DEFAULTS2);
     s.speed = num8(el.speed, 0.1, 4, 1);
     s.key = el.key === void 0 ? true : !!el.key;
     s.label = pick(el.label, LABELS, "name");
@@ -18505,7 +18514,7 @@ function harmonicsRuntime(SH2) {
     var prev = s;
     s.steps = (Array.isArray(el.steps) ? el.steps : []).slice(0, 60).map(function(st) {
       st = st && typeof st === "object" ? st : {};
-      var out = clean(st, prev);
+      var out = clean2(st, prev);
       out.caption = typeof st.caption === "string" ? st.caption.slice(0, 300) : "";
       prev = out;
       return out;
@@ -18648,7 +18657,7 @@ function harmonicsRuntime(SH2) {
     return { view: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], proj: ortho(-bx, bx, -by, by), bx, by };
   }
   function toScreen(cam, p, vp) {
-    var q = apply(cam.view, p), c = apply(cam.proj, [q[0], q[1], q[2]]);
+    var q = apply2(cam.view, p), c = apply2(cam.proj, [q[0], q[1], q[2]]);
     return [vp[0] + (c[0] / c[3] * 0.5 + 0.5) * vp[2], vp[1] + (0.5 - c[1] / c[3] * 0.5) * vp[3]];
   }
   function style(th, mode, lit, nodes) {
@@ -18742,11 +18751,11 @@ function harmonicsRuntime(SH2) {
     var s = pic.s, Lt = s.tableMax, rows = Lt + 1, cols = 2 * Lt + 1;
     var lab = Math.max(10, Math.min(26, h / rows * 0.24)), names = s.names !== false && h / rows > 40;
     var gap = names ? lab * 0.6 : 0;
-    var cell = Math.min(w / cols, (h - 4) / rows - gap), passes = [], places = [];
-    var x0 = (w - cell * cols) / 2, y0 = (h - rows * (cell + gap)) / 2;
+    var cell2 = Math.min(w / cols, (h - 4) / rows - gap), passes = [], places = [];
+    var x0 = (w - cell2 * cols) / 2, y0 = (h - rows * (cell2 + gap)) / 2;
     if (!GL.init()) return false;
     pic.cells.forEach(function(c) {
-      var x = x0 + (c.m + Lt) * cell, y = y0 + c.l * (cell + gap);
+      var x = x0 + (c.m + Lt) * cell2, y = y0 + c.l * (cell2 + gap);
       var D = frameData(c.s, c.F, c.field, wt, c.s.view);
       var S = SH2.surface(c.G, D.r, c.G.idx, c.surfBuf);
       c.surfBuf = S;
@@ -18754,9 +18763,9 @@ function harmonicsRuntime(SH2) {
         c.mesh = GL.mesh(S.pos, S.nor, D.val, c.G.idx);
         cellMeshes.push(c);
       } else GL.update(c.mesh, S.pos, S.nor, D.val);
-      var vp = [x + cell * 0.04, y, cell * 0.92, cell * 0.92];
+      var vp = [x + cell2 * 0.04, y, cell2 * 0.92, cell2 * 0.92];
       passes.push({ vp, cam: camera(turn, tilt, 1.04, vp[2], vp[3]), draws: [{ mesh: c.mesh, style: style(th, D.mode, 1, c.s.view === "lobes" ? 0 : s.nodes ? 1.2 : 0) }] });
-      places.push([c, x + cell / 2, y + cell * 0.92 + lab * 0.45, D.mode]);
+      places.push([c, x + cell2 / 2, y + cell2 * 0.92 + lab * 0.45, D.mode]);
     });
     if (!GL.render(ctx, w, h, dpr, passes)) return false;
     ctx.save();
@@ -19314,8 +19323,8 @@ function cleanTextStyles(styles) {
   return Object.keys(out).length ? out : null;
 }
 function textSizes(styles) {
-  const clean = cleanTextStyles(styles) || {};
-  return Object.fromEntries(SIZE_KEYS.map((key) => [key, clean[key] ?? DEFAULT_SIZES[key]]));
+  const clean2 = cleanTextStyles(styles) || {};
+  return Object.fromEntries(SIZE_KEYS.map((key) => [key, clean2[key] ?? DEFAULT_SIZES[key]]));
 }
 function withTextStyles(styles, patch) {
   const next = { ...styles || {}, ...patch };
@@ -24208,7 +24217,7 @@ function createTypeIterator(config, reverse) {
   if (reverse) {
     fields.reverse();
   }
-  return function(node, context, walk, walkReducer) {
+  return function(node, context, walk3, walkReducer) {
     let prevContextValue;
     if (useContext) {
       prevContextValue = context[contextName];
@@ -24222,7 +24231,7 @@ function createTypeIterator(config, reverse) {
           if (breakWalk) {
             return true;
           }
-        } else if (walk(ref)) {
+        } else if (walk3(ref)) {
           return true;
         }
       }
@@ -24275,7 +24284,7 @@ function createWalker(config) {
   }
   const fastTraversalIteratorsNatural = createFastTraveralMap(iteratorsNatural);
   const fastTraversalIteratorsReverse = createFastTraveralMap(iteratorsReverse);
-  const walk = function(root, options) {
+  const walk3 = function(root, options) {
     function walkNode(node, item, list) {
       const enterRet = enter.call(context, node, item, list);
       if (enterRet === breakWalk) {
@@ -24334,11 +24343,11 @@ function createWalker(config) {
     }
     walkNode(root);
   };
-  walk.break = breakWalk;
-  walk.skip = skipNode;
-  walk.find = function(ast, fn) {
+  walk3.break = breakWalk;
+  walk3.skip = skipNode;
+  walk3.find = function(ast, fn) {
     let found = null;
-    walk(ast, function(node, item, list) {
+    walk3(ast, function(node, item, list) {
       if (fn.call(this, node, item, list)) {
         found = node;
         return breakWalk;
@@ -24346,9 +24355,9 @@ function createWalker(config) {
     });
     return found;
   };
-  walk.findLast = function(ast, fn) {
+  walk3.findLast = function(ast, fn) {
     let found = null;
-    walk(ast, {
+    walk3(ast, {
       reverse: true,
       enter(node, item, list) {
         if (fn.call(this, node, item, list)) {
@@ -24359,16 +24368,16 @@ function createWalker(config) {
     });
     return found;
   };
-  walk.findAll = function(ast, fn) {
+  walk3.findAll = function(ast, fn) {
     const found = [];
-    walk(ast, function(node, item, list) {
+    walk3(ast, function(node, item, list) {
       if (fn.call(this, node, item, list)) {
         found.push(node);
       }
     });
     return found;
   };
-  return walk;
+  return walk3;
 }
 
 // node_modules/css-tree/lib/syntax/node/index.js
@@ -25075,6 +25084,1684 @@ function themeDocFromDeck(deck, name50) {
     css: typeof deck?.themeCss === "string" ? deck.themeCss : null
   });
 }
+
+// client/src/utils/plotImport/drawing.js
+var IDENTITY = [1, 0, 0, 1, 0, 0];
+function multiply(m, n) {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5]
+  ];
+}
+var apply = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+function bboxOf(points) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of points) {
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+function hexColor(c) {
+  if (c == null) return null;
+  if (Array.isArray(c) || ArrayBuffer.isView(c)) {
+    const v = Array.from(c).slice(0, 3).map((n) => n <= 1 && Array.from(c).every((k) => k <= 1) ? n * 255 : n);
+    return "#" + v.map((n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0")).join("");
+  }
+  const s = String(c).trim().toLowerCase();
+  if (!s || s === "none" || s === "transparent") return null;
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return "#" + [...s.slice(1)].map((h) => h + h).join("");
+  const m = /^rgba?\(([^)]+)\)$/.exec(s);
+  if (m) return hexColor(m[1].split(",").slice(0, 3).map(Number));
+  if (s === "black") return "#000000";
+  if (s === "white") return "#ffffff";
+  return s;
+}
+var nearPt = (a, b) => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+function markerShape(segs, curves = 0) {
+  const pts = segs.flat();
+  if (!pts.length) return { shape: "other", size: 0 };
+  const b = bboxOf(pts);
+  const w = b.x1 - b.x0, h = b.y1 - b.y0, size = Math.max(w, h);
+  if (curves > 0) return { shape: "circle", size };
+  const clean2 = segs.map((s) => s.length > 2 && nearPt(s[0], s[s.length - 1]) ? s.slice(0, -1) : s).filter((s) => s.length > 1);
+  if (clean2.length === 1) {
+    const s = clean2[0];
+    if (s.length === 2) return { shape: w >= h ? "hline" : "vline", size };
+    if (s.length === 3) return { shape: "triangle", size };
+    if (s.length === 4) {
+      const onAxes = s.every(([x, y]) => Math.abs(x - (b.x0 + b.x1) / 2) < size * 0.05 || Math.abs(y - (b.y0 + b.y1) / 2) < size * 0.05);
+      return { shape: onAxes ? "diamond" : "square", size };
+    }
+    return { shape: s.length === 5 ? "pentagon" : s.length === 6 ? "hexagon" : "polygon", size };
+  }
+  if (clean2.length === 2 && clean2.every((s) => s.length === 2)) {
+    const upright = clean2.every((s) => Math.abs(s[0][0] - s[1][0]) < 1e-6 || Math.abs(s[0][1] - s[1][1]) < 1e-6);
+    return { shape: upright ? "plus" : "x", size };
+  }
+  return { shape: "other", size };
+}
+function unwrap(text) {
+  let s = String(text).trim().replace(/−/g, "-").replace(/\$/g, "");
+  for (let guard = 0; guard < 8; guard++) {
+    const m = /\\math(?:default|regular|rm)\{/.exec(s);
+    if (!m) break;
+    let depth = 1, j = m.index + m[0].length;
+    for (; j < s.length && depth; j++) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") depth--;
+    }
+    s = s.slice(0, m.index) + s.slice(m.index + m[0].length, j - 1) + s.slice(j);
+  }
+  return s.replace(/\\times|\\cdot/g, "×");
+}
+function parseTickLabel(raw) {
+  if (raw == null) return null;
+  const s = unwrap(raw).replace(/(\d)[,\u2009\u202f\u00a0](?=\d{3}(?:\D|$))/g, "$1").replace(/[\s{}]/g, "").replace(/%$/, "");
+  if (!s) return null;
+  let m = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.exec(s);
+  if (m) return { value: Number(s) };
+  m = /^(?:([-+]?(?:\d+\.?\d*|\.\d+))×)?10\^([-+]?\d+)$/.exec(s);
+  if (m) {
+    const power = Number(m[2]);
+    return m[1] === void 0 ? { value: 10 ** power, power } : { value: Number(m[1]) * 10 ** power };
+  }
+  return null;
+}
+function parseAxisOffset(raw) {
+  if (raw == null) return null;
+  const s = unwrap(raw).replace(/[\s{}]/g, "");
+  let m = /^1e([-+]?\d+)$/i.exec(s) || /^×10\^([-+]?\d+)$/.exec(s);
+  if (m) return { scale: 10 ** Number(m[1]) };
+  m = /^([-+])((?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)$/i.exec(s);
+  if (m) return { shift: Number(m[1] + m[2]) };
+  return null;
+}
+var FONT_METRICS = [
+  [/liberation|arial|helvetica|arimo/i, { digit: 55.62, drop: 0.3623 }],
+  [/dejavu|bitstream/i, { digit: 63.62, drop: 0.38 }]
+];
+function fontMetrics(name50) {
+  for (const [re, m] of FONT_METRICS) if (re.test(name50 || "")) return m;
+  return { digit: 63.62, drop: 0.38 };
+}
+
+// client/src/utils/plotImport/svgReader.js
+var SKIP3 = /* @__PURE__ */ new Set(["defs", "clipPath", "style", "metadata", "script", "title", "desc", "mask", "pattern", "symbol", "marker", "linearGradient", "radialGradient", "filter"]);
+function readSvgDrawing(text, Parser = globalThis.DOMParser) {
+  const doc = new Parser().parseFromString(text, "image/svg+xml");
+  const svg = doc.documentElement;
+  if (!svg || svg.localName !== "svg" || doc.getElementsByTagName("parsererror").length) throw new Error("This file isn’t an SVG that could be read");
+  const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+  const [vx, vy, vw, vh] = vb.length === 4 && vb.every(isFinite) ? vb : [0, 0, parseFloat(svg.getAttribute("width")) || 0, parseFloat(svg.getAttribute("height")) || 0];
+  const root = [1, 0, 0, -1, -vx, vy + vh];
+  const byId = /* @__PURE__ */ new Map();
+  for (const el of svg.getElementsByTagName("*")) {
+    const id = el.getAttribute("id");
+    if (id) byId.set(id, el);
+  }
+  const drawing = { width: vw, height: vh, pages: 1, producer: producerOf(svg, text), paths: [], marks: [], texts: [], axes: [], images: 0, notes: [], drawn: 0 };
+  const ctx = { byId, drawing, axes: null, group: null, role: null };
+  walk(svg, root, ctx);
+  return drawing;
+}
+function producerOf(svg, text) {
+  const head = text.slice(0, 4e3);
+  const version = /Matplotlib v([\d.]+)/i.exec(head);
+  if (version) return `Matplotlib ${version[1]}`;
+  if (/matplotlib/i.test(head)) return "Matplotlib";
+  const creator = [...svg.getElementsByTagName("*")].find((e) => e.localName === "creator");
+  return creator ? creator.textContent.trim() : "";
+}
+function roleOf(id) {
+  if (/^xtick_\d+$/.test(id)) return "tick-x";
+  if (/^ytick_\d+$/.test(id)) return "tick-y";
+  if (/^legend_\d+$/.test(id)) return "legend";
+  return null;
+}
+function walk(el, ctm, ctx) {
+  for (const child of el.childNodes) {
+    if (child.nodeType !== 1 || SKIP3.has(child.localName)) continue;
+    const m = multiply(ctm, transformOf(child.getAttribute("transform")));
+    const id = child.getAttribute("id") || "";
+    const tag = child.localName;
+    if (tag === "g") {
+      if (/^axes_\d+$/.test(id)) {
+        const axes = { id, box: null, ticks: { x: [], y: [] }, xLabel: "", yLabel: "", xOffset: null, yOffset: null, title: "" };
+        ctx.drawing.axes.push(axes);
+        walk(child, m, { ...ctx, axes, group: null, role: null });
+        continue;
+      }
+      if (/^text_\d+$/.test(id)) {
+        addText(child, m, ctx, id);
+        continue;
+      }
+      if (/^matplotlib\.axis_\d+$/.test(id)) {
+        walk(child, m, { ...ctx, axis: Number(id.split("_").pop()) % 2 === 1 ? "x" : "y", role: "axis" });
+        continue;
+      }
+      const role = roleOf(id) || ctx.role;
+      if (role === "tick-x" || role === "tick-y") {
+        if (role !== ctx.role) {
+          const tick = { pos: null, grid: null, label: null, text: null };
+          walk(child, m, { ...ctx, role, tick });
+          let pos = tick.pos ?? tick.grid, approx = false;
+          if (pos == null && tick.text) {
+            pos = role === "tick-x" ? tick.text.x + tick.text.w / 2 : tick.text.y + fontMetrics(tick.text.font).drop * tick.text.size;
+            approx = true;
+          }
+          if (ctx.axes && pos != null) ctx.axes.ticks[role === "tick-x" ? "x" : "y"].push({ pos, label: tick.label, approx });
+          continue;
+        }
+      }
+      const group = /^(line2d|PathCollection|LineCollection|PolyCollection|patch|Line2D|QuadMesh)_?\d*$/i.test(id) && !ctx.group ? id : ctx.group;
+      const legendId = role === "legend" && !ctx.legendId ? id : ctx.legendId;
+      walk(child, m, { ...ctx, role, group, legendId });
+      continue;
+    }
+    if (tag === "text") {
+      addText(child, m, ctx, id || null);
+      continue;
+    }
+    if (tag === "image") {
+      ctx.drawing.images++;
+      continue;
+    }
+    if (tag === "use") {
+      addUse(child, m, ctx);
+      continue;
+    }
+    const shape = shapeOf(child);
+    if (shape) addPath(child, shape, m, ctx);
+  }
+}
+function addText(el, m, ctx, gid) {
+  let words = "";
+  for (const n of el.childNodes) if (n.nodeType === 8) {
+    words = n.nodeValue.trim();
+    break;
+  }
+  if (!words && el.localName === "text") words = el.textContent.trim();
+  if (!words) return;
+  let at = m, size = 10, w = null, anchor = "start", font = "";
+  const glyphs = [...el.getElementsByTagName("g")].find((g) => g.getAttribute("transform"));
+  if (glyphs) {
+    at = multiply(m, transformOf(glyphs.getAttribute("transform")));
+    size = Math.hypot(at[2], at[3]) * 100 || 10;
+    const uses = [...glyphs.getElementsByTagName("use")];
+    font = ((uses[0]?.getAttribute("xlink:href") || uses[0]?.getAttribute("href") || "").match(/^#(.+)-[0-9a-f]+$/i) || [])[1] || "";
+    let last = 0;
+    for (const u of uses) last = Math.max(last, transformOf(u.getAttribute("transform"))[4]);
+    w = (last + fontMetrics(font).digit) * Math.hypot(at[0], at[1]);
+  } else if (el.localName === "text") {
+    at = multiply(m, [1, 0, 0, 1, parseFloat(el.getAttribute("x")) || 0, parseFloat(el.getAttribute("y")) || 0]);
+    const style = styleOf2(el);
+    size = parseFloat(style["font-size"]) || 10;
+    anchor = style["text-anchor"] || el.getAttribute("text-anchor") || "start";
+    font = style["font-family"] || "";
+  }
+  if (w === null) w = size * 0.6 * words.length;
+  let [x, y] = apply(at, 0, 0);
+  if (anchor === "middle") x -= w / 2;
+  else if (anchor === "end") x -= w;
+  const angle = Math.round(Math.atan2(at[1], at[0]) * 180 / Math.PI);
+  const text = { s: words, x, y, size, angle, w, font, group: ctx.group, gid, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id };
+  ctx.drawing.texts.push(text);
+  if (ctx.tick) {
+    ctx.tick.label = words;
+    ctx.tick.text = text;
+  } else if (ctx.role === "axis" && ctx.axes) {
+    const key = ctx.axis === "x" ? "x" : "y";
+    if (!ctx.axes[`${key}Label`] && !/^\$?[−\-+×\\\d]/.test(words)) {
+      ctx.axes[`${key}Label`] = words.replace(/\$/g, "");
+      ctx.axes[`${key}LabelText`] = text;
+    } else ctx.axes[`${key}Offset`] = words;
+  } else if (ctx.axes && !ctx.role && !ctx.group && !ctx.axes.title) {
+    ctx.axes.title = words.replace(/\$/g, "");
+    ctx.axes.titleText = text;
+  }
+}
+function addUse(el, m, ctx) {
+  const ref = (el.getAttribute("xlink:href") || el.getAttribute("href") || "").replace(/^#/, "");
+  const def = ctx.byId.get(ref);
+  if (!def) return;
+  const x = parseFloat(el.getAttribute("x")) || 0, y = parseFloat(el.getAttribute("y")) || 0;
+  const at = multiply(m, [1, 0, 0, 1, x, y]);
+  const [px, py] = apply(at, 0, 0);
+  if (ctx.tick) {
+    if (ctx.tick.pos == null) ctx.tick.pos = ctx.role === "tick-x" ? px : py;
+    return;
+  }
+  const shape = shapeOf(def);
+  if (!shape) return;
+  const lin = [at[0], at[1], at[2], at[3], 0, 0];
+  const segs = shape.segs.map((s) => s.map(([sx, sy]) => apply(lin, sx, sy)));
+  const { shape: name50, size } = markerShape(segs, shape.curves);
+  const style = { ...styleOf2(def), ...styleOf2(el) };
+  ctx.drawing.marks.push({ x: px, y: py, shape: name50, size, fill: paintOf(style.fill, "#000000"), stroke: paintOf(style.stroke, null), group: ctx.group, legendId: ctx.legendId, role: ctx.role, axes: ctx.axes?.id, order: ctx.drawing.drawn++ });
+}
+function addPath(el, shape, m, ctx) {
+  const segs = shape.segs.map((s) => s.map(([x, y]) => apply(m, x, y)));
+  if (!segs.length) return;
+  const style = styleOf2(el);
+  const scale = Math.hypot(m[0], m[1]) || 1;
+  const stroke = paintOf(style.stroke, null);
+  if (ctx.tick && ctx.tick.grid == null) ctx.tick.grid = ctx.role === "tick-x" ? segs[0][0][0] : segs[0][0][1];
+  const path = {
+    segs,
+    closed: shape.closed,
+    curves: shape.curves,
+    stroke,
+    fill: paintOf(style.fill, "#000000"),
+    width: (parseFloat(style["stroke-width"]) || 1) * scale,
+    dash: stroke && style["stroke-dasharray"] && style["stroke-dasharray"] !== "none" ? style["stroke-dasharray"].split(/[\s,]+/).map(Number).filter(isFinite) : null,
+    group: ctx.group,
+    legendId: ctx.legendId,
+    role: ctx.role,
+    axes: ctx.axes?.id,
+    order: ctx.drawing.drawn++
+  };
+  if (ctx.axes && !ctx.axes.drawn) {
+    ctx.axes.drawn = true;
+    if (/^patch_\d+$/.test(ctx.group || "") && segs.length === 1 && segs[0].length === 4) {
+      ctx.axes.box = bboxOf(segs[0]);
+      path.role = "axes";
+    }
+  }
+  ctx.drawing.paths.push(path);
+}
+function paintOf(v, unset) {
+  if (v === void 0) return unset;
+  return hexColor(v);
+}
+function styleOf2(el) {
+  const out = {};
+  for (const a of ["fill", "stroke", "stroke-width", "stroke-dasharray", "font-size", "text-anchor", "font-family"]) {
+    const v = el.getAttribute(a);
+    if (v != null) out[a] = v.trim();
+  }
+  for (const part2 of (el.getAttribute("style") || "").split(";")) {
+    const k = part2.indexOf(":");
+    if (k > 0) out[part2.slice(0, k).trim()] = part2.slice(k + 1).trim();
+  }
+  return out;
+}
+function shapeOf(el) {
+  const tag = el.localName;
+  const num8 = (a) => parseFloat(el.getAttribute(a)) || 0;
+  if (tag === "path") return parsePathData(el.getAttribute("d") || "");
+  if (tag === "rect") {
+    const x = num8("x"), y = num8("y"), w = num8("width"), h = num8("height");
+    return { segs: [[[x, y], [x + w, y], [x + w, y + h], [x, y + h]]], closed: true, curves: 0 };
+  }
+  if (tag === "line") return { segs: [[[num8("x1"), num8("y1")], [num8("x2"), num8("y2")]]], closed: false, curves: 0 };
+  if (tag === "polyline" || tag === "polygon") {
+    const v = (el.getAttribute("points") || "").trim().split(/[\s,]+/).map(Number);
+    const pts = [];
+    for (let i = 0; i + 1 < v.length; i += 2) pts.push([v[i], v[i + 1]]);
+    return { segs: [pts], closed: tag === "polygon", curves: 0 };
+  }
+  if (tag === "circle" || tag === "ellipse") {
+    const cx = num8("cx"), cy = num8("cy"), rx = tag === "circle" ? num8("r") : num8("rx"), ry = tag === "circle" ? num8("r") : num8("ry");
+    return { segs: [[[cx + rx, cy], [cx, cy + ry], [cx - rx, cy], [cx, cy - ry]]], closed: true, curves: 4 };
+  }
+  return null;
+}
+function parsePathData(d) {
+  const tokens = d.match(/[a-df-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) || [];
+  const segs = [];
+  let cur = null, x = 0, y = 0, sx = 0, sy = 0, curves = 0, closed = false, cmd = "";
+  let i = 0;
+  const n = () => Number(tokens[i++]);
+  const isNum = () => i < tokens.length && !/^[a-z]$/i.test(tokens[i]);
+  const to = (nx, ny) => {
+    x = nx;
+    y = ny;
+    if (!cur) {
+      cur = [[x, y]];
+      segs.push(cur);
+    } else cur.push([x, y]);
+  };
+  while (i < tokens.length) {
+    if (/^[a-z]$/i.test(tokens[i])) cmd = tokens[i++];
+    const rel = cmd === cmd.toLowerCase();
+    const C2 = cmd.toUpperCase();
+    if (C2 === "Z") {
+      closed = true;
+      x = sx;
+      y = sy;
+      cur = null;
+      continue;
+    }
+    if (!isNum()) {
+      i++;
+      continue;
+    }
+    if (C2 === "M") {
+      const nx = n() + (rel ? x : 0), ny = n() + (rel ? y : 0);
+      cur = [[nx, ny]];
+      segs.push(cur);
+      x = sx = nx;
+      y = sy = ny;
+      cmd = rel ? "l" : "L";
+    } else if (C2 === "L") to(n() + (rel ? x : 0), n() + (rel ? y : 0));
+    else if (C2 === "H") to(n() + (rel ? x : 0), y);
+    else if (C2 === "V") to(x, n() + (rel ? y : 0));
+    else if (C2 === "C") {
+      i += 4;
+      curves++;
+      to(n() + (rel ? x : 0), n() + (rel ? y : 0));
+    } else if (C2 === "S" || C2 === "Q") {
+      i += 2;
+      curves++;
+      to(n() + (rel ? x : 0), n() + (rel ? y : 0));
+    } else if (C2 === "T") {
+      curves++;
+      to(n() + (rel ? x : 0), n() + (rel ? y : 0));
+    } else if (C2 === "A") {
+      i += 5;
+      curves++;
+      to(n() + (rel ? x : 0), n() + (rel ? y : 0));
+    } else i++;
+  }
+  return { segs: segs.filter((s) => s.length), closed, curves };
+}
+function transformOf(attr) {
+  let m = IDENTITY;
+  if (!attr) return m;
+  const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
+  let t;
+  while (t = re.exec(attr)) {
+    const v = t[2].trim().split(/[\s,]+/).map(Number);
+    let n = IDENTITY;
+    if (t[1] === "matrix" && v.length === 6) n = v;
+    else if (t[1] === "translate") n = [1, 0, 0, 1, v[0] || 0, v[1] || 0];
+    else if (t[1] === "scale") n = [v[0], 0, 0, v.length > 1 ? v[1] : v[0], 0, 0];
+    else if (t[1] === "rotate") {
+      const r = (v[0] || 0) * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+      n = [c, s, -s, c, 0, 0];
+      if (v.length === 3) n = multiply(multiply([1, 0, 0, 1, v[1], v[2]], n), [1, 0, 0, 1, -v[1], -v[2]]);
+    } else if (t[1] === "skewX") n = [1, 0, Math.tan((v[0] || 0) * Math.PI / 180), 1, 0, 0];
+    else if (t[1] === "skewY") n = [1, Math.tan((v[0] || 0) * Math.PI / 180), 0, 1, 0, 0];
+    m = multiply(m, n);
+  }
+  return m;
+}
+
+// client/src/utils/plotImport/pdfReader.js
+async function readPdfDrawing(data, pdfjsLib) {
+  const task = pdfjsLib.getDocument({ data, verbosity: 0, isEvalSupported: false });
+  const doc = await task.promise;
+  try {
+    const page = await doc.getPage(1);
+    const [ops, content, meta] = await Promise.all([
+      page.getOperatorList(),
+      page.getTextContent(),
+      doc.getMetadata().catch(() => null)
+    ]);
+    const drawing = walk2(ops, pdfjsLib.OPS);
+    const [vx0, vy0, vx1, vy1] = page.view;
+    drawing.width = vx1 - vx0;
+    drawing.height = vy1 - vy0;
+    drawing.pages = doc.numPages;
+    drawing.producer = String(meta?.info?.Producer || meta?.info?.Creator || "");
+    const fonts = {};
+    const fontName = (id) => {
+      if (!(id in fonts)) {
+        try {
+          fonts[id] = String(page.commonObjs.get(id)?.name || "").replace(/^[A-Z]{6}\+/, "");
+        } catch {
+          fonts[id] = "";
+        }
+      }
+      return fonts[id];
+    };
+    drawing.texts = content.items.filter((t) => t.str && t.str.trim()).map((t) => {
+      const [a, b, c, d, e, f] = t.transform;
+      const size = Math.hypot(c, d) || t.height || 10;
+      return { s: t.str.trim(), x: e, y: f, w: t.width || 0, size, angle: Math.round(Math.atan2(b, a) * 180 / Math.PI), font: fontName(t.fontName) };
+    });
+    return drawing;
+  } finally {
+    task.destroy();
+  }
+}
+function walk2(ops, OPS) {
+  const NAME = {};
+  for (const [k, v] of Object.entries(OPS)) NAME[v] = k;
+  let ctm = IDENTITY, stroke = "#000000", fill2 = "#000000", width = 1, dash = null;
+  let tm = IDENTITY, tx = 0, ty = 0, lineX = 0, lineY = 0, leading = 0, rise = 0, fontSize = 0;
+  const stack = [], paths = [], marks = [], textOps = [];
+  let images = 0;
+  let order = 0;
+  let form = null;
+  const forms = [];
+  ops.fnArray.forEach((fn, i) => {
+    const a = ops.argsArray[i];
+    switch (NAME[fn]) {
+      case "save":
+        stack.push([ctm, stroke, fill2, width, dash]);
+        break;
+      case "restore":
+        if (stack.length) [ctm, stroke, fill2, width, dash] = stack.pop();
+        break;
+      case "transform":
+        ctm = multiply(ctm, a);
+        break;
+      case "setStrokeRGBColor":
+        stroke = hexColor(typeof a[0] === "string" ? a[0] : a);
+        break;
+      case "setFillRGBColor":
+        fill2 = hexColor(typeof a[0] === "string" ? a[0] : a);
+        break;
+      case "setLineWidth":
+        width = a[0];
+        break;
+      case "setDash":
+        dash = a[0] && a[0].length ? Array.from(a[0]) : null;
+        break;
+      case "paintFormXObjectBegin": {
+        forms.push([ctm, stroke, fill2, width, dash, form]);
+        ctm = multiply(ctm, a[0] || IDENTITY);
+        form = { x: ctm[4], y: ctm[5], segs: [], curves: 0, filled: false, stroked: false, fill: fill2, stroke, scale: Math.hypot(ctm[0], ctm[1]) || 1, begin: i };
+        break;
+      }
+      case "paintFormXObjectEnd": {
+        const done = form;
+        [ctm, stroke, fill2, width, dash, form] = forms.pop() || [ctm, stroke, fill2, width, dash, null];
+        if (done && done.segs.length) {
+          const { shape, size } = markerShape(done.segs, done.curves);
+          marks.push({ x: done.x, y: done.y, shape, size, fill: done.filled ? done.fill : null, stroke: done.stroked ? done.stroke : null, order: order++, ops: [done.begin, i] });
+        }
+        break;
+      }
+      case "paintImageXObject":
+      case "paintInlineImageXObject":
+      case "paintImageMaskXObject":
+        images++;
+        break;
+      case "beginText":
+        tm = IDENTITY;
+        tx = lineX = 0;
+        ty = lineY = 0;
+        break;
+      case "setFont":
+        fontSize = a[1] || 0;
+        break;
+      case "setLeading":
+        leading = -a[0];
+        break;
+      case "setTextRise":
+        rise = a[0] || 0;
+        break;
+      case "moveText":
+        tx = lineX += a[0];
+        ty = lineY += a[1];
+        break;
+      case "setLeadingMoveText":
+        leading = a[1];
+        tx = lineX += a[0];
+        ty = lineY += a[1];
+        break;
+      case "setTextMatrix":
+        tm = Array.from(a[0]);
+        tx = lineX = 0;
+        ty = lineY = 0;
+        break;
+      case "nextLine":
+        tx = lineX;
+        ty = lineY += leading;
+        break;
+      case "nextLineShowText":
+      case "nextLineSetSpacingShowText":
+        tx = lineX;
+        ty = lineY += leading;
+      case "showText":
+      case "showSpacedText": {
+        if (form) break;
+        const m = multiply(ctm, tm);
+        const [x, y] = apply(m, tx, ty + rise);
+        textOps.push({ x, y, size: fontSize * Math.hypot(m[2], m[3]), fill: fill2, order: order++, ops: [i, i] });
+        break;
+      }
+      case "constructPath": {
+        const paint = NAME[a[0]] || "";
+        if (!paint || paint === "endPath") break;
+        const { segs, curves, closed } = pathOf(a[1] && a[1][0], form ? null : ctm);
+        if (!segs.length) break;
+        const stroked = /stroke/i.test(paint), filled = /fill/i.test(paint);
+        if (form) {
+          const m = [ctm[0], ctm[1], ctm[2], ctm[3], 0, 0];
+          form.segs.push(...segs.map((s) => s.map(([x, y]) => apply(m, x, y))));
+          form.curves += curves;
+          form.filled = form.filled || filled;
+          form.stroked = form.stroked || stroked;
+          form.fill = fill2;
+          form.stroke = stroke;
+        } else {
+          const scale = Math.hypot(ctm[0], ctm[1]) || 1;
+          paths.push({ segs, closed, curves, stroke: stroked ? stroke : null, fill: filled ? fill2 : null, width: width * scale, dash: stroked ? dash : null, order: order++, ops: [i, i] });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+  return { paths, marks, texts: [], textOps, images, notes: [] };
+}
+function pathOf(data, m) {
+  const segs = [];
+  let cur = null, curves = 0, closed = false;
+  const at = (x, y) => m ? apply(m, x, y) : [x, y];
+  const d = data ? Array.from(data) : [];
+  for (let k = 0; k < d.length; ) {
+    const op = d[k];
+    if (op === 0) {
+      cur = [at(d[k + 1], d[k + 2])];
+      segs.push(cur);
+      k += 3;
+    } else if (op === 1) {
+      if (!cur) {
+        cur = [];
+        segs.push(cur);
+      }
+      cur.push(at(d[k + 1], d[k + 2]));
+      k += 3;
+    } else if (op === 2) {
+      if (!cur) {
+        cur = [];
+        segs.push(cur);
+      }
+      cur.push(at(d[k + 5], d[k + 6]));
+      curves++;
+      k += 7;
+    } else if (op === 3) {
+      if (!cur) {
+        cur = [];
+        segs.push(cur);
+      }
+      cur.push(at(d[k + 3], d[k + 4]));
+      curves++;
+      k += 5;
+    } else if (op === 4) {
+      closed = true;
+      k += 1;
+    } else k += 1;
+  }
+  return { segs: segs.filter((s) => s.length), curves, closed };
+}
+
+// client/src/utils/plotImport/plotModel.js
+var PlotError = class extends Error {
+};
+var EDGE = 0.75;
+var TICK_MAX = 12;
+var LABEL_GAP = 45;
+function plotFromDrawing(drawing) {
+  const warnings = [...drawing.notes || []];
+  if (drawing.pages > 1) warnings.push(`This PDF has ${drawing.pages} pages; the first was read.`);
+  if (drawing.producer && !/matplotlib/i.test(drawing.producer)) warnings.push(`This figure was made by ${drawing.producer.split(/[\s,]/)[0]}, not matplotlib, so check what was found.`);
+  if (drawing.images) warnings.push("The figure has a picture in it (such as imshow’s), which has no data to read.");
+  drawing = withInlineMarks(drawing);
+  let all = (drawing.axes || []).filter((a) => a.box);
+  if (!all.length) all = findAxes(drawing);
+  if (!all.length) throw new PlotError("No axes were found in this figure.");
+  const texts = mergeTexts(drawing.texts || []);
+  const panels = [];
+  for (const a of all) {
+    const host = panels.find((p) => sameBox(p.axes.box, a.box));
+    if (host) host.twins.push(a);
+    else panels.push({ axes: a, twins: [] });
+  }
+  const big = (p) => area(p.axes.box);
+  const bySize = [...panels].sort((p, q) => {
+    const d = big(q) - big(p);
+    return Math.abs(d) > 0.02 * big(p) ? d : 0;
+  });
+  const away = (t, b) => Math.hypot(Math.max(b.x0 - t.x, 0, t.x - b.x1), Math.max(b.y0 - t.y, 0, t.y - b.y1));
+  const tops = panels.filter((p) => !panels.some((q) => nestedIn(p.axes.box, q.axes.box)));
+  const wordsOf = (p) => !tops.includes(p) || tops.length < 2 ? texts : texts.filter((t) => {
+    const c = { x: t.x + (t.w || 0) / 2, y: t.y + t.size * 0.35 };
+    return tops.every((q) => away(c, p.axes.box) <= away(c, q.axes.box) + 0.5);
+  });
+  let main = null, failed = null;
+  for (const p of bySize) {
+    const said = [];
+    try {
+      p.read = readAxes(drawing, p.axes, all, wordsOf(p), said);
+    } catch (err) {
+      if (!(err instanceof PlotError)) throw err;
+      failed = failed || err;
+      continue;
+    }
+    main = p;
+    p.said = said;
+    break;
+  }
+  if (!main) throw failed;
+  const fileWarnings = [...warnings];
+  warnings.push(...main.said);
+  for (const p of panels) {
+    if (p !== main) {
+      p.said = [];
+      p.read = readAxes(drawing, p.axes, all, wordsOf(p), p.said, { loose: true });
+    }
+  }
+  const outer = figureLegend(drawing, panels.map((p) => p.axes.box), texts);
+  let outerLegend = null;
+  if (outer) {
+    const entries = legendEntries(drawing, outer, texts);
+    const named = entries.map(() => []);
+    const like = (e, layer) => e.kind === layer.kind && e.color === layer.color && (layer.kind !== "points" || !e.shape || e.shape === layer.shape);
+    for (const p of panels) {
+      const taken = /* @__PURE__ */ new Set();
+      for (const layer of p.read.layers) {
+        const i = entries.findIndex((e, k) => !taken.has(k) && like(e, layer));
+        if (i < 0) continue;
+        taken.add(i);
+        named[i].push(layer);
+        if (!layer.name) layer.name = entries[i].label;
+      }
+    }
+    const sinks = entries.map((e, k) => named[k].length ? { label: e.label, groups: /* @__PURE__ */ new Set(), ops: [], layers: named[k] } : null);
+    const rest = legendDrawing(drawing, outer, entries, (k) => sinks[k], (drawing.axes || []).length ? null : void 0);
+    outerLegend = { rest, entries: sinks.filter(Boolean) };
+  }
+  let n = 0;
+  const noun = { points: "Points", line: "Line", bars: "Bars" };
+  for (const p of panels) {
+    const counts = {};
+    for (const l of p.read.layers) {
+      l.id = `l${++n}`;
+      counts[l.kind] = (counts[l.kind] || 0) + 1;
+      if (!l.name) l.name = `${noun[l.kind]} ${counts[l.kind]}`;
+      l.groups = [...l.groups || []];
+      l.ops = l.ops || [];
+      delete l.z;
+      delete l.px;
+      delete l.py;
+    }
+  }
+  const { layers, legend } = main.read;
+  const plot = {
+    size: { width: drawing.width, height: drawing.height },
+    producer: drawing.producer || "",
+    axes: axesOf(main.read),
+    layers,
+    // What draws the legend but no layer's entry (its frame, its title), for
+    // keeping the figure as it is; null without a legend
+    legend,
+    // What draws the figure's background and the axes', and the legends'
+    // boxes, for keeping the figure as it is with them clear
+    backdrop: { ...backdropOf(drawing, all), frames: [...panels.map((p) => p.read.frame), outer?.frame].filter(Boolean).map((f) => ({ group: f.group || null, ops: f.ops || null, fill: f.fill, stroke: f.stroke || null })) },
+    warnings
+  };
+  if (outerLegend) {
+    plot.figureLegend = {
+      groups: [...outerLegend.rest.groups],
+      ops: outerLegend.rest.ops,
+      entries: outerLegend.entries.map((e) => ({ label: e.label, groups: [...e.groups], ops: e.ops, layers: e.layers.map((l) => l.id) }))
+    };
+  }
+  plot.labels = labelsOf(drawing, panels, panels.length > 1 ? panels.map((p, i) => `p${i + 1}`) : null, { texts, outer });
+  if (panels.length > 1) {
+    plot.panels = panelsOf(drawing, panels, main, texts);
+    for (const pn of plot.panels) for (const l of pn.layers) l.panel = pn.id;
+    plot.fileWarnings = fileWarnings;
+    warnings.push(`This figure has ${panels.length} panels: a graph is made of one of them: ${panelNamed(plot.panels.find((pn) => pn.main))}, unless you choose another.`);
+  }
+  return plot;
+}
+function backdropOf(d, all) {
+  const page = (d.width || 0) * (d.height || 0);
+  const starts = new Set(all.map((a) => a.start).filter((s) => s != null));
+  const paths = [...d.paths || []].sort((p, q) => (p.order ?? 0) - (q.order ?? 0));
+  const found = paths.filter((p, i) => {
+    if (!p.fill || p.segs.length !== 1) return false;
+    if (p.role === "axes" || p.ops && starts.has(p.ops[0])) return true;
+    const r = i === 0 && !p.axes && rectOf(p.segs[0]);
+    return !!r && area(r) >= page * 0.98;
+  });
+  return { groups: [...new Set(found.map((p) => p.group).filter(Boolean))], ops: found.filter((p) => p.ops).map((p) => p.ops) };
+}
+function labelsOf(drawing, panels, ids, { texts = [], outer = null } = {}) {
+  const out = [];
+  const textOps = drawing.textOps || [];
+  const tops = panels.map((p) => p.axes.box).filter((b) => !panels.some((q) => q.axes.box !== b && nestedIn(b, q.axes.box)));
+  const highest = Math.max(...tops.map((b) => b.y1));
+  const svg = (drawing.axes || []).length > 0;
+  const sup = (svg ? drawing.texts || [] : texts).filter((t) => !t.angle && t.s && !parseTickLabel(t.s) && t.y > highest && (svg ? !t.axes && t.role !== "legend" : !(outer && t.x >= outer.box.x0 - 1 && t.x <= outer.box.x1 + 1 && t.y >= outer.box.y0 - 1 && t.y <= outer.box.y1 + 1)) && Math.abs(t.x + (t.w || 0) / 2 - (drawing.width || 0) / 2) < 0.15 * (drawing.width || 0) && !panels.some((p) => p.read.words?.title === t)).sort((a, b) => b.y - a.y)[0];
+  panels.forEach((p, i) => {
+    const box = p.axes.box;
+    const w = p.read.words || {};
+    const twin = (p.twins || [])[0] || null;
+    const found = [
+      ["title", w.title],
+      ["xlabel", w.x],
+      ["ylabel", w.y],
+      ["ylabel2", twin ? twin.yLabelText : w.y2],
+      ["xlabel2", twin ? twin.xLabelText : null]
+    ];
+    for (const [kind, t] of found) add2(kind, t, box, ids ? ids[i] : null);
+  });
+  if (sup) add2("suptitle", sup, { x0: 0, y0: 0, x1: drawing.width || 0, y1: drawing.height || 0 }, null);
+  return out.map(({ t, ...rest }) => rest);
+  function add2(kind, t, box, panel) {
+    if (!t || !t.s || out.some((o) => o.t === t)) return;
+    const entry = {
+      t,
+      id: panel && kind !== "suptitle" ? `${panel}:${kind}` : kind,
+      kind,
+      panel,
+      s: t.s,
+      math: t.s.includes("$"),
+      font: t.font || "",
+      size: t.size,
+      angle: t.angle || 0,
+      x: t.x,
+      y: t.y,
+      w: t.w || 0,
+      align: alignOf(t, box)
+    };
+    if (t.gid) entry.gid = t.gid;
+    else {
+      const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
+      const along2 = textOps.filter((o) => {
+        const ox = o.x - t.x, oy = o.y - t.y;
+        const s = ox * dx + oy * dy, n = -ox * dy + oy * dx;
+        return Math.abs(n) < 0.3 * t.size && s > -0.5 && s < (t.w || 0) + 0.5;
+      });
+      if (!along2.length) return;
+      entry.ops = along2.map((o) => o.ops);
+      entry.fill = along2[0].fill || "#000000";
+    }
+    out.push(entry);
+  }
+}
+function alignOf(t, box) {
+  const a = (t.angle || 0) * Math.PI / 180, dx = Math.cos(a), dy = Math.sin(a);
+  const along2 = (x, y) => x * dx + y * dy;
+  const start = along2(t.x, t.y), len2 = t.w || 0;
+  const ends = [along2(box.x0, box.y0), along2(box.x1, box.y1)].sort((p, q) => p - q);
+  const marks = { start: [start, ends[0]], center: [start + len2 / 2, (ends[0] + ends[1]) / 2], end: [start + len2, ends[1]] };
+  let best = "center", gap = Math.abs(marks.center[0] - marks.center[1]) - 1;
+  for (const k of ["start", "end"]) {
+    const g = Math.abs(marks[k][0] - marks[k][1]);
+    if (g < gap) {
+      best = k;
+      gap = g;
+    }
+  }
+  return best;
+}
+var panelNamed = (p) => / panel$|^Inset( \d+)?$/.test(p.name) ? `the ${p.name.toLowerCase()}` : `“${p.name}”`;
+function axesOf({ box, X, Y, labels, grid }) {
+  return {
+    box,
+    x: { scale: X.scale, range: X.range, label: clean(labels.x), categories: X.categories || null },
+    y: { scale: Y.scale, range: Y.range, label: clean(labels.y), categories: Y.categories || null },
+    grid
+  };
+}
+function panelPlot(plot, id) {
+  const p = plot.panels?.find((q) => q.id === id);
+  if (!p || p.main) return plot;
+  if (!p.axes || !p.layers.length) return null;
+  return {
+    ...plot,
+    axes: p.axes,
+    layers: p.layers,
+    legend: p.legend,
+    warnings: [...plot.fileWarnings || [], ...p.warnings, `A graph of ${panelNamed(p)}, one of this figure’s ${plot.panels.length} panels.`]
+  };
+}
+var area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+var nestedIn = (b, outer) => b !== outer && b.x0 >= outer.x0 - 0.5 && b.x1 <= outer.x1 + 0.5 && b.y0 >= outer.y0 - 0.5 && b.y1 <= outer.y1 + 0.5 && area(b) < area(outer) * 0.9;
+function readAxes(drawing, axes, all, texts, warnings, { loose = false } = {}) {
+  const box = axes.box;
+  const mine = (it) => !it.axes || !axes.id || it.axes === axes.id;
+  const inBox = (it) => {
+    const [x, y] = centerOf(it);
+    return x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  };
+  const insets = new Set(all.filter((a) => a.id && nestedIn(a.box, box)).map((a) => a.id));
+  const twinDrawn = axes.id && [...drawing.paths || [], ...drawing.marks || []].some((it) => !it.role && it.axes && it.axes !== axes.id && !insets.has(it.axes) && inBox(it));
+  if (all.some((a) => a !== axes && sameBox(a.box, box)) || twinDrawn) warnings.push("A second set of axes shares this plot’s box (twinx or twiny); its layers were left out.");
+  const others = all.filter((a) => a !== axes && !sameBox(a.box, box));
+  const inside = (x, y, b = box, m = 0.5) => x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m;
+  const inOther = (x, y, order) => others.some((a) => {
+    const inset = nestedIn(a.box, box);
+    const after = a.order != null && order != null && order >= a.order;
+    return inside(x, y, a.box, inset ? after ? LABEL_GAP : TICK_MAX : 0) && (!inside(x, y, box, -0.5) || inset && (a.order == null || order == null || after));
+  });
+  const drawnHere = (it) => axes.order == null || !others.some((a) => nestedIn(box, a.box)) || (it.order ?? Infinity) >= axes.order;
+  const own = axes.ticks && (axes.ticks.x.length || axes.ticks.y.length);
+  const found = own ? null : ticksOf(drawing, box, texts);
+  if (found?.twin) warnings.push(`This plot has a second ${found.twin.split("").join(" and ")} axis on its other side; everything was read against the ${found.twin === "x" ? "bottom" : found.twin === "y" ? "left" : "bottom and left"} one.`);
+  const xTicks = own ? axes.ticks.x : found.x;
+  const yTicks = own ? axes.ticks.y : found.y;
+  const offsets = own ? { x: axes.xOffset, y: axes.yOffset } : offsetsOf(texts, box);
+  let X = calibrate(xTicks, offsets.x, "x", warnings);
+  let Y = calibrate(yTicks, offsets.y, "y", warnings);
+  const calibrated = !!(X && Y);
+  if (!calibrated && loose) {
+    X = POINTS();
+    Y = POINTS();
+  }
+  if (!X || !Y) {
+    const which = !X ? "x" : "y";
+    const ticks = !X ? xTicks : yTicks;
+    const words2 = ticks.filter((t) => t.label != null).map((t) => t.label);
+    throw new PlotError(`The ${which} axis doesn’t have two numbered ticks to read its scale from${words2.length ? ` (its labels read as: ${words2.slice(0, 4).join(", ")})` : " (no tick labels were found beside it)"}.`);
+  }
+  X.range = [X.toData(box.x0), X.toData(box.x1)];
+  Y.range = [Y.toData(box.y0), Y.toData(box.y1)];
+  const used = /* @__PURE__ */ new Set([...found?.used || []]);
+  const words = own ? { x: axes.xLabelText || null, y: axes.yLabelText || null } : axisLabels(texts.filter((t) => !used.has(t)), box);
+  const labels = own ? { x: axes.xLabel, y: axes.yLabel } : { x: words.x?.s || "", y: words.y?.s || "" };
+  const legend = legendOf(drawing, box, texts, axes.id);
+  const ofLegend = (it) => legend && it.order >= legend.order && inside(...centerOf(it), legend.box, 1);
+  const isData = (it) => !it.role && mine(it) && drawnHere(it);
+  const marks = (drawing.marks || []).filter((m) => isData(m) && inside(m.x, m.y) && !ofLegend(m) && !inOther(m.x, m.y, m.order) && !isTickMark(m, box));
+  const lines = [], segments = [], rects = [], fills = [];
+  let grid = false;
+  for (const p of drawing.paths || []) {
+    if (!isData(p)) {
+      if ((p.role === "tick-x" || p.role === "tick-y") && spansBox(p, box)) grid = true;
+      continue;
+    }
+    const pts = p.segs.flat();
+    if (!pts.length) continue;
+    const b = bboxOf(pts);
+    if (!inside(b.x0, b.y0) || !inside(b.x1, b.y1)) continue;
+    if (inOther((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, p.order)) continue;
+    if (ofLegend(p)) continue;
+    if (sameBox(b, box)) continue;
+    if (isSpine(p, b, box) || isInnerTick(p, b, box)) continue;
+    if (p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && spansBox(p, box)) {
+      grid = true;
+      continue;
+    }
+    if (p.fill && (p.closed || isClosed(p)) && p.segs.length === 1 && rectOf(p.segs[0])) {
+      rects.push({ ...rectOf(p.segs[0]), fill: p.fill, group: p.group, ops: p.ops, order: p.order ?? 0 });
+      continue;
+    }
+    if (p.fill && !p.stroke) {
+      fills.push(p);
+      continue;
+    }
+    if (!p.stroke) continue;
+    if (p.segs.every((s) => s.length === 2 && (flat(s, 0) || flat(s, 1)))) {
+      for (const s of p.segs) segments.push({ s, color: p.stroke, group: p.group, ops: p.ops });
+      continue;
+    }
+    lines.push(p);
+  }
+  if (fills.length) warnings.push(`${fills.length === 1 ? "A filled area" : `${fills.length} filled areas`} (fill_between, a shaded band) couldn’t be read as data.`);
+  const ups = segments.filter((g) => flat(g.s, 0)), levels = segments.filter((g) => flat(g.s, 1) && !flat(g.s, 0));
+  const ends = segments.flatMap((g) => g.s);
+  const isCap = (m) => (m.shape === "hline" || m.shape === "vline") && ends.some(([x, y]) => Math.abs(x - m.x) < 0.05 && Math.abs(y - m.y) < 0.05);
+  const points = marks.filter((m) => !isCap(m));
+  const caps = marks.filter(isCap);
+  const layers = [];
+  const groups = /* @__PURE__ */ new Map();
+  for (const m of points) {
+    const key = m.group || `${m.fill}|${m.stroke}|${m.shape}|${m.size.toFixed(1)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  for (const ms of groups.values()) {
+    const first = ms[0];
+    const color = first.fill || first.stroke || "#000000";
+    layers.push({
+      kind: "points",
+      color,
+      shape: first.shape,
+      size: first.size,
+      z: first.order ?? 0,
+      groups: new Set(ms.map((m) => m.group).filter(Boolean)),
+      ops: ms.map((m) => m.ops).filter(Boolean),
+      px: ms.map((m) => m.x),
+      py: ms.map((m) => m.y),
+      data: { x: ms.map((m) => X.toData(m.x)), y: ms.map((m) => Y.toData(m.y)) },
+      fidelity: "exact"
+    });
+  }
+  attachErrors(layers, ups, "y", X, Y, warnings);
+  attachErrors(layers, levels, "x", X, Y, warnings);
+  for (const c of caps) {
+    const layer = (c.group || c.ops) && layers.find((l) => l.kind === "points" && l.color === (c.fill || c.stroke));
+    if (layer && c.group) layer.groups.add(c.group);
+    if (layer && c.ops) layer.ops.push(c.ops);
+  }
+  for (const p of lines) {
+    const pts = p.segs.length === 1 ? p.segs[0] : p.segs.flatMap((s, i) => i ? [[NaN, NaN], ...s] : s);
+    layers.push({
+      kind: "line",
+      color: p.stroke,
+      width: p.width,
+      style: dashStyle(p.dash, p.width),
+      z: p.order ?? 0,
+      groups: new Set(p.group ? [p.group] : []),
+      ops: p.ops ? [p.ops] : [],
+      data: { x: pts.map(([x]) => isFinite(x) ? X.toData(x) : NaN), y: pts.map(([, y]) => isFinite(y) ? Y.toData(y) : NaN) },
+      fidelity: "as drawn"
+    });
+  }
+  if (rects.length) {
+    const byFill = /* @__PURE__ */ new Map();
+    for (const r of rects) {
+      if (!byFill.has(r.fill)) byFill.set(r.fill, []);
+      byFill.get(r.fill).push(r);
+    }
+    let shifted = false;
+    for (const [fill2, rs] of byFill) {
+      const data = { x: [], x2: [], y: [] };
+      for (const r of rs) {
+        const left = X.toData(r.x0), right = X.toData(r.x1);
+        const lo = Y.toData(r.y0), hi = Y.toData(r.y1);
+        const zero = (v) => Math.abs(v) <= 1e-9 * (Math.abs(Y.range[1] - Y.range[0]) || 1);
+        let value;
+        if (Y.scale === "log") value = hi;
+        else if (zero(lo)) value = hi;
+        else if (zero(hi)) value = lo;
+        else {
+          value = hi;
+          shifted = true;
+        }
+        data.x.push(left);
+        data.x2.push(right);
+        data.y.push(value);
+      }
+      layers.push({ kind: "bars", color: fill2, z: rs[0].order, data, fidelity: "exact", groups: new Set(rs.map((r) => r.group).filter(Boolean)), ops: rs.map((r) => r.ops).filter(Boolean) });
+    }
+    if (shifted) warnings.push("Some bars don’t start at zero (stacked bars?); they stand on zero here.");
+  }
+  if (!layers.length && !loose) throw new PlotError("No points, lines or bars were found inside the axes.");
+  layers.sort((p, q) => p.z - q.z);
+  const entries = legendEntries(drawing, legend, texts);
+  const taken = /* @__PURE__ */ new Set();
+  for (const layer of layers) {
+    const i = entries.findIndex((e, k) => !taken.has(k) && e.kind === layer.kind && e.color === layer.color && (layer.kind !== "points" || !e.shape || e.shape === layer.shape));
+    if (i >= 0) {
+      taken.add(i);
+      layer.name = entries[i].label;
+      layer.legend = i;
+    }
+  }
+  const byEntry = new Map(layers.filter((l) => l.legend != null).map((l) => [l.legend, l]));
+  const legendPart = legend ? legendDrawing(drawing, legend, entries, (k) => byEntry.get(k) || null, axes.id) : null;
+  return {
+    box,
+    X,
+    Y,
+    labels,
+    grid,
+    layers,
+    calibrated,
+    legend: legendPart && (legendPart.groups.size || legendPart.ops.length) ? { groups: [...legendPart.groups], ops: legendPart.ops } : null,
+    frame: legend?.frame || null,
+    // Its title's and axis labels' words, for changing them (labelsOf)
+    words: { ...words, title: own ? axes.titleText || null : titleOver(texts, box) }
+  };
+}
+function panelsOf(d, panels, main, texts) {
+  const out = panels.map((p, i) => ({
+    id: `p${i + 1}`,
+    name: "",
+    box: p.axes.box,
+    parent: null,
+    main: p === main,
+    calibrated: p.read.calibrated,
+    groups: [p.axes, ...p.twins].map((a) => a.id).filter(Boolean),
+    ops: [],
+    layers: p.read.layers,
+    legend: p.read.legend,
+    // For a graph of it: its axes (null when its numbers don't read), and
+    // what was said of it
+    axes: p.read.calibrated ? axesOf(p.read) : null,
+    warnings: p.said || [],
+    title: clean(p.axes.title || "")
+  }));
+  for (const p of out) {
+    const outer = out.filter((q) => nestedIn(p.box, q.box)).sort((a, b) => area(a.box) - area(b.box))[0];
+    if (outer) p.parent = outer.id;
+  }
+  const items = [...d.paths || [], ...d.marks || [], ...d.textOps || []].filter((it) => it.ops);
+  if (items.length && !out.some((p) => p.groups.length)) {
+    const within = (it, b, m = 0) => {
+      const [x, y] = centerOf(it);
+      return x >= b.x0 - m && x <= b.x1 + m && y >= b.y0 - m && y <= b.y1 + m;
+    };
+    const away = (it, b) => {
+      const [x, y] = centerOf(it);
+      return Math.hypot(Math.max(b.x0 - x, 0, x - b.x1), Math.max(b.y0 - y, 0, y - b.y1));
+    };
+    const first = (b, after = -1) => Math.min(...items.filter((it) => it.ops[0] > after && within(it, b)).map((it) => it.ops[0]));
+    const top2 = out.filter((p) => !p.parent);
+    top2.forEach((p) => {
+      p.start = panels[out.indexOf(p)].axes.start ?? first(p.box);
+    });
+    top2.sort((a, b) => a.start - b.start);
+    top2.forEach((p, k) => {
+      if (k < top2.length - 1) {
+        p.end = top2[k + 1].start - 1;
+        return;
+      }
+      const near = items.filter((it) => it.ops[0] >= p.start && top2.every((q) => away(it, p.box) <= away(it, q.box)) && away(it, p.box) <= LABEL_GAP + 15);
+      p.end = Math.max(p.start, ...near.map((it) => it.ops[1]));
+    });
+    for (const p of out.filter((q) => q.parent)) {
+      const host = out.find((q) => q.id === p.parent);
+      p.start = panels[out.indexOf(p)].axes.start ?? first(p.box, host.start ?? -1);
+      const near = items.filter((it) => it.ops[0] >= p.start && (host.end == null || it.ops[1] <= host.end) && away(it, p.box) <= 30);
+      p.end = Math.max(p.start, ...near.map((it) => it.ops[1]));
+    }
+    for (const p of out) {
+      if (isFinite(p.start) && isFinite(p.end)) p.ops = [[p.start, p.end]];
+      delete p.start;
+      delete p.end;
+    }
+  }
+  const top = out.filter((p) => !p.parent);
+  const spots = (k) => {
+    const vals = [];
+    for (const p of top) {
+      const c = k === "x" ? (p.box.x0 + p.box.x1) / 2 : -(p.box.y0 + p.box.y1) / 2;
+      if (!vals.some((v) => Math.abs(v - c) < 10)) vals.push(c);
+    }
+    return vals.sort((a, b) => a - b);
+  };
+  const xs = spots("x"), ys = spots("y");
+  const word = (list, i, n, other) => n === 1 ? "" : n <= 3 ? list[n === 2 && i === 1 ? 2 : i] : `${other} ${i + 1}`;
+  for (const p of out) {
+    if (!p.title && !p.groups.length) {
+      const over = titleOver(texts, p.box);
+      if (over) p.title = clean(over.s);
+    }
+    if (p.parent) {
+      const k = out.filter((q) => q.parent).indexOf(p);
+      p.name = p.title || (k ? `Inset ${k + 1}` : "Inset");
+      continue;
+    }
+    const xi = xs.findIndex((v) => Math.abs(v - (p.box.x0 + p.box.x1) / 2) < 10);
+    const yi = ys.findIndex((v) => Math.abs(v + (p.box.y0 + p.box.y1) / 2) < 10);
+    const where = [word(["top", "middle", "bottom"], yi, ys.length, "row"), word(["left", "center", "right"], xi, xs.length, "column")].filter(Boolean).join(" ");
+    p.name = p.title || (where ? `${where[0].toUpperCase()}${where.slice(1)} panel` : top.length === 1 ? "Main panel" : `Panel ${out.indexOf(p) + 1}`);
+  }
+  for (const p of out) delete p.title;
+  return out;
+}
+var POINTS = () => ({ scale: "linear", toData: (v) => v, categories: null, range: null, approx: false });
+var clean = (s) => String(s || "").replace(/\$/g, "").replace(/\\mathdefault\{([^{}]*)\}/g, "$1").trim();
+var centerOf = (it) => it.segs ? ((b) => [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2])(bboxOf(it.segs.flat())) : [it.x, it.y];
+function withInlineMarks(drawing) {
+  const inline2 = /* @__PURE__ */ new Set();
+  const marks = [...drawing.marks || []];
+  for (const p of drawing.paths || []) {
+    if (p.group || !p.fill || !p.stroke) continue;
+    const pts = p.segs.flat();
+    if (!pts.length) continue;
+    const b = bboxOf(pts);
+    const w = b.x1 - b.x0, h = b.y1 - b.y0, big = Math.max(w, h);
+    if (big > 20 || big < 0.5) continue;
+    if (p.curves === 0 && Math.min(w, h) > 0.01 && Math.abs(w - h) > 0.15 * big) continue;
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const { shape, size } = markerShape(p.segs.map((s) => s.map(([x, y]) => [x - cx, y - cy])), p.curves);
+    if (shape === "other" || shape === "polygon") continue;
+    marks.push({ x: cx, y: cy, shape, size, fill: p.fill, stroke: p.stroke, order: p.order, ops: p.ops, role: p.role, line: shape === "hline" || shape === "vline" ? p.segs[0] : null });
+    inline2.add(p);
+  }
+  return { ...drawing, marks, paths: (drawing.paths || []).filter((p) => !inline2.has(p)) };
+}
+function isTickMark(m, box) {
+  if (m.shape === "vline") return Math.abs(m.y - box.y0) <= m.size / 2 + EDGE || Math.abs(m.y - box.y1) <= m.size / 2 + EDGE;
+  if (m.shape === "hline") return Math.abs(m.x - box.x0) <= m.size / 2 + EDGE || Math.abs(m.x - box.x1) <= m.size / 2 + EDGE;
+  return false;
+}
+function findAxes(d) {
+  const page = d.width * d.height;
+  const boxes = [];
+  for (const p of d.paths || []) {
+    if (!p.fill || p.segs.length !== 1) continue;
+    const r = rectOf(p.segs[0]);
+    if (!r) continue;
+    const a = (r.x1 - r.x0) * (r.y1 - r.y0);
+    if (a > page * 0.98 || a < page * 0.04) continue;
+    if (boxes.some((b) => sameBox(b, r))) continue;
+    boxes.push({ ...r, order: p.order, start: p.ops?.[0] });
+  }
+  const texts = mergeTexts(d.texts || []);
+  const numbered = boxes.filter((b) => {
+    const t = ticksOf(d, b, texts);
+    return t.x.filter((k) => parseTickLabel(k.label)).length >= 2 && t.y.filter((k) => parseTickLabel(k.label)).length >= 2;
+  });
+  const smallest = Math.min(...numbered.map(area));
+  const panels = boxes.filter((b) => numbered.includes(b) || numbered.length && area(b) >= smallest * 0.5 && !numbered.some((n) => nestedIn(b, n) || nestedIn(n, b)));
+  if (numbered.length) return panels.map((b) => ({ box: { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }, order: b.order, start: b.start }));
+  const spines = (d.paths || []).filter((p) => p.stroke && p.segs.length === 1 && p.segs[0].length === 2 && (flat(p.segs[0], 0) || flat(p.segs[0], 1))).filter((p) => {
+    const b = bboxOf(p.segs[0]);
+    return Math.max(b.x1 - b.x0, b.y1 - b.y0) > Math.min(d.width, d.height) * 0.3;
+  });
+  if (spines.length >= 2) {
+    const b = bboxOf(spines.flatMap((p) => p.segs[0]));
+    if (b.x1 - b.x0 > 20 && b.y1 - b.y0 > 20) return [{ box: b }];
+  }
+  return boxes.length ? [{ box: boxes.sort((p, q) => (q.x1 - q.x0) * (q.y1 - q.y0) - (p.x1 - p.x0) * (p.y1 - p.y0))[0] }] : [];
+}
+function ticksOf(d, box, texts) {
+  const strokes = [];
+  for (const p of d.paths || []) {
+    if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) continue;
+    strokes.push(p.segs[0]);
+  }
+  for (const m of d.marks || []) if (m.line) strokes.push(m.line);
+  else if (m.shape === "vline") strokes.push([[m.x, m.y - m.size / 2], [m.x, m.y + m.size / 2]]);
+  else if (m.shape === "hline") strokes.push([[m.x - m.size / 2, m.y], [m.x + m.size / 2, m.y]]);
+  const places = { x: [], y: [] };
+  const rows = { x: /* @__PURE__ */ new Map(), y: /* @__PURE__ */ new Map() };
+  for (const s of strokes) {
+    const [[ax, ay], [bx, by]] = s;
+    const len2 = Math.hypot(bx - ax, by - ay);
+    const upright = Math.abs(ax - bx) < 0.01, level2 = Math.abs(ay - by) < 0.01;
+    if (upright && ax >= box.x0 - 1 && ax <= box.x1 + 1) {
+      if (Math.min(ay, by) <= box.y0 + 1 && Math.max(ay, by) >= box.y1 - 1) {
+        places.x.push(ax);
+        continue;
+      }
+      if (len2 > TICK_MAX) continue;
+      for (const y2 of [ay, by]) if (y2 <= box.y0 + EDGE || y2 >= box.y1 - EDGE) {
+        const k = y2.toFixed(1);
+        if (!rows.x.has(k)) rows.x.set(k, []);
+        rows.x.get(k).push(ax);
+      }
+    } else if (level2 && ay >= box.y0 - 1 && ay <= box.y1 + 1) {
+      if (Math.min(ax, bx) <= box.x0 + 1 && Math.max(ax, bx) >= box.x1 - 1) {
+        places.y.push(ay);
+        continue;
+      }
+      if (len2 > TICK_MAX) continue;
+      for (const x2 of [ax, bx]) if (x2 <= box.x0 + EDGE || x2 >= box.x1 - EDGE) {
+        const k = x2.toFixed(1);
+        if (!rows.y.has(k)) rows.y.set(k, []);
+        rows.y.get(k).push(ay);
+      }
+    }
+  }
+  for (const k of ["x", "y"]) for (const list of rows[k].values()) if (list.length >= 3) places[k].push(...list);
+  const flatText = texts.filter((t) => !t.angle);
+  const pick = (groups) => [...groups.values()].sort((p, q) => p.gap - q.gap)[0]?.items || [];
+  const cluster = (list, key, gap) => {
+    const groups = /* @__PURE__ */ new Map();
+    for (const t of list) {
+      const k = Math.round(key(t) * 2) / 2;
+      const g = [...groups.keys()].find((q) => Math.abs(q - k) <= 1);
+      const at = g ?? k;
+      if (!groups.has(at)) groups.set(at, { gap: gap(t), items: [] });
+      groups.get(at).items.push(t);
+    }
+    return groups;
+  };
+  const below = flatText.filter((t) => t.y + t.size * 0.75 < box.y0 + 1 && box.y0 - t.y < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20);
+  const above = flatText.filter((t) => t.y > box.y1 - 1 && t.y - box.y1 < LABEL_GAP && t.x + t.w > box.x0 - 20 && t.x < box.x1 + 20);
+  const left = flatText.filter((t) => t.x + t.w < box.x0 + 1 && box.x0 - (t.x + t.w) < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10);
+  const right = flatText.filter((t) => t.x > box.x1 - 1 && t.x - box.x1 < LABEL_GAP && t.y >= box.y0 - 10 && t.y <= box.y1 + 10);
+  const numbered = (list) => list.filter((t) => parseTickLabel(t.s)).length;
+  const side = (first, other) => numbered(first) >= 2 || numbered(other) < 2 ? first.length || !other.length ? first : other : other;
+  const bottomRow = pick(cluster(below, (t) => t.y, (t) => box.y0 - t.y)), topRow = pick(cluster(above, (t) => t.y, (t) => t.y - box.y1));
+  const leftCol = pick(cluster(left, (t) => t.x + t.w, (t) => box.x0 - (t.x + t.w))), rightCol = pick(cluster(right, (t) => t.x, (t) => t.x - box.x1));
+  const xRow = side(bottomRow, topRow), yCol = side(leftCol, rightCol);
+  const twin = (xRow === bottomRow && numbered(topRow) >= 2 ? "x" : "") + (yCol === leftCol && numbered(rightCol) >= 2 ? "y" : "");
+  const pair = (labels, list, anchor, tol) => labels.map((t) => {
+    const a = anchor(t);
+    let best = null;
+    for (const p of list) if (Math.abs(p - a) <= tol && (best === null || Math.abs(p - a) < Math.abs(best - a))) best = p;
+    return best === null ? { pos: a, label: t.s, approx: true } : { pos: best, label: t.s };
+  }).sort((p, q) => p.pos - q.pos);
+  const x = pair(xRow, places.x, (t) => t.x + t.w / 2, 6);
+  const y = pair(yCol, places.y, (t) => t.y + fontMetrics(t.font).drop * t.size, 4);
+  return { x, y, used: [...xRow, ...yCol], twin };
+}
+function mergeTexts(texts) {
+  const sorted = [...texts].sort((p, q) => Math.abs(p.y - q.y) > 0.1 * Math.max(p.size, q.size) ? q.y - p.y : p.x - q.x);
+  const runs = [];
+  for (const t of sorted) {
+    const last = runs[runs.length - 1];
+    const gap = last ? t.x - (last.x + last.w) : Infinity;
+    if (last && !t.angle && !last.angle && Math.abs(t.y - last.y) < 0.1 * t.size && Math.abs(t.size - last.size) < 0.5 && gap > -0.6 && gap < 0.45 * t.size) {
+      last.s += gap > 0.12 * t.size ? ` ${t.s}` : t.s;
+      last.w = t.x + t.w - last.x;
+    } else runs.push({ ...t });
+  }
+  const power = /* @__PURE__ */ new Map();
+  const taken = /* @__PURE__ */ new Set();
+  runs.forEach((t, i) => {
+    if (!/^(?:[-−]?\d+(?:\.\d+)?\s*×\s*)?10$/.test(t.s)) return;
+    const j = runs.findIndex((u, k) => k !== i && !taken.has(k) && u.x >= t.x + t.w - 2 && u.x <= t.x + t.w + 8 && u.y > t.y + 1 && u.y < t.y + t.size && /^[-−]?\d+$/.test(u.s));
+    if (j >= 0) {
+      power.set(i, j);
+      taken.add(j);
+    }
+  });
+  return runs.flatMap((t, i) => {
+    if (taken.has(i)) return [];
+    if (!power.has(i)) return [t];
+    const u = runs[power.get(i)];
+    return [{ ...t, s: `${t.s}^{${u.s}}`, w: u.x + u.w - t.x }];
+  });
+}
+function offsetsOf(texts, box) {
+  const out = { x: null, y: null };
+  for (const t of texts) {
+    if (!parseAxisOffset(t.s)) continue;
+    if (t.x > box.x1 - 60 && t.y < box.y0) out.x = t.s;
+    else if (t.y > box.y1 - 2 && (t.x < box.x0 + 60 || t.x > box.x1 - 60)) out.y = t.s;
+  }
+  return out;
+}
+function axisLabels(texts, box) {
+  const words = texts.filter((t) => !parseTickLabel(t.s) && !parseAxisOffset(t.s));
+  const x = words.filter((t) => !t.angle && t.y < box.y0 - 2 && t.x + t.w / 2 > box.x0 && t.x + t.w / 2 < box.x1).sort((p, q) => q.y - p.y)[0];
+  const side = words.filter((t) => Math.abs(Math.abs(t.angle) - 90) < 2 && (t.x < box.x0 || t.x > box.x1));
+  const y = side.sort((p, q) => Math.abs(p.x - box.x0) - Math.abs(q.x - box.x0))[0];
+  const y2 = side.filter((t) => t !== y && t.x > box.x1).sort((p, q) => p.x - q.x)[0];
+  return { x: x || null, y: y || null, y2: y2 || null };
+}
+function titleOver(texts, box) {
+  const cx = (box.x0 + box.x1) / 2, span = box.x1 - box.x0;
+  return texts.filter((t) => !t.angle && !parseTickLabel(t.s) && t.y > box.y1 && t.y < box.y1 + 3 * t.size && (Math.abs(t.x + (t.w || 0) / 2 - cx) < span / 4 || Math.abs(t.x - box.x0) < 2 || Math.abs(t.x + (t.w || 0) - box.x1) < 2)).sort((a, b) => a.y - b.y)[0] || null;
+}
+function calibrate(ticks, offsetText, axis, warnings) {
+  let pairs = ticks.filter((t) => t.pos != null && t.label != null).map((t) => ({ pos: t.pos, label: t.label, approx: !!t.approx, ...parseTickLabel(t.label) || {} })).sort((p, q) => p.pos - q.pos);
+  const numbered = pairs.filter((p) => p.value !== void 0 && isFinite(p.value));
+  let categories = null;
+  if (numbered.length < 2) {
+    const named = pairs.filter((p) => String(p.label).trim());
+    if (named.length < 2) return null;
+    categories = named.map((p) => String(p.label).replace(/\$/g, "").trim());
+    pairs = named.map((p, i) => ({ pos: p.pos, value: i, approx: p.approx }));
+    warnings.push(`The ${axis} axis is labeled with words (${categories.slice(0, 3).join(", ")}${categories.length > 3 ? "…" : ""}), so the graph numbers them from 0.`);
+  } else pairs = numbered;
+  if (!categories) {
+    const powers = pairs.every((p) => p.power !== void 0);
+    const key = powers ? "power" : "value";
+    const rising = pairs.every((p, i) => i === 0 || p[key] > pairs[i - 1][key]);
+    if (!rising) {
+      const zero = pairs.findIndex((p) => p[key] === 0);
+      let fixed = false;
+      if (zero > 0 && pairs.slice(0, zero).every((p) => p[key] > 0)) {
+        pairs.slice(0, zero).forEach((p) => {
+          p[key] = -p[key];
+        });
+        fixed = true;
+      } else if (pairs.every((p, i) => (i === 0 || p[key] < pairs[i - 1][key]) && p[key] > 0)) {
+        pairs.forEach((p) => {
+          p[key] = -p[key];
+        });
+        fixed = true;
+      }
+      if (fixed && powers) pairs.forEach((p) => {
+        p.value = 10 ** p.power;
+      });
+    }
+    const off = parseAxisOffset(offsetText);
+    if (off) pairs.forEach((p) => {
+      p.value = off.scale ? p.value * off.scale : p.value + off.shift;
+    });
+  }
+  const fit = (f) => {
+    const n = pairs.length;
+    let sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (const p of pairs) {
+      const u = f(p.value);
+      sx += u;
+      sy += p.pos;
+      sxx += u * u;
+      sxy += u * p.pos;
+    }
+    const den = n * sxx - sx * sx;
+    if (!(Math.abs(den) > 0)) return null;
+    const b = (n * sxy - sx * sy) / den, a = (sy - b * sx) / n;
+    const resid = Math.max(...pairs.map((p) => Math.abs(a + b * f(p.value) - p.pos)));
+    return { a, b, resid };
+  };
+  const lin = fit((v) => v);
+  const canLog = !categories && pairs.every((p) => p.value > 0);
+  const log = canLog ? fit((v) => Math.log10(v)) : null;
+  const useLog = log && (!lin || log.resid < lin.resid * 0.5 || pairs.every((p) => p.power !== void 0));
+  const F3 = useLog ? log : lin;
+  if (!F3 || !isFinite(F3.b) || F3.b === 0) return null;
+  const approx = pairs.some((p) => p.approx);
+  if (approx) warnings.push(`The ${axis} axis has no tick marks or grid lines to measure from, so its scale comes from where its numbers are printed: very close (within about 0.01% of the axis), not exact.`);
+  else if (F3.resid > 0.5) warnings.push(`The ${axis} axis’s numbered ticks don’t line up evenly (off by up to ${F3.resid.toFixed(1)} pt); check its numbers.`);
+  const toData = (pos) => {
+    const u = (pos - F3.a) / F3.b;
+    return useLog ? 10 ** u : u;
+  };
+  return { scale: useLog ? "log" : "linear", toData, categories, range: null, fit: F3, approx };
+}
+function legendOf(d, box, texts, axesId) {
+  const ours = (it) => it.role === "legend" && (!axesId || it.axes === axesId);
+  const own = [...d.paths || [], ...d.marks || []].filter(ours);
+  if (own.length) {
+    const frame = own.find((p) => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4);
+    const words2 = (d.texts || []).filter(ours).flatMap((t) => [[t.x, t.y], [t.x + t.w, t.y + t.size]]);
+    const b2 = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap((p) => p.segs ? p.segs.flat() : [[p.x, p.y]]), ...words2]);
+    return { box: b2, order: Math.min(...own.map((p) => p.order ?? 0)), frame: frame || null };
+  }
+  if (axesId && [...d.paths || [], ...d.marks || []].some((it) => it.role === "legend")) return null;
+  const words = texts.filter((t) => !t.angle && !parseTickLabel(t.s) && t.x > box.x0 && t.x < box.x1 && t.y > box.y0 && t.y < box.y1);
+  for (const p of d.paths || []) {
+    if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue;
+    const b2 = bboxOf(p.segs[0]);
+    if (sameBox(b2, box) || b2.x0 < box.x0 - 1 || b2.x1 > box.x1 + 1 || b2.y0 < box.y0 - 1 || b2.y1 > box.y1 + 1) continue;
+    if (words.some((t) => t.x >= b2.x0 && t.x <= b2.x1 && t.y >= b2.y0 && t.y <= b2.y1)) return { box: b2, order: p.order ?? 0, frame: p };
+  }
+  const found = [];
+  for (const t of words) {
+    const s = sampleBefore(d, t, -Infinity);
+    if (s) found.push({ t, s });
+  }
+  if (!found.length) return null;
+  const pts = found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]]]);
+  const b = bboxOf(pts);
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null };
+}
+function figureLegend(d, boxes, texts) {
+  const outside = (x, y) => boxes.every((b2) => x < b2.x0 - 1 || x > b2.x1 + 1 || y < b2.y0 - 1 || y > b2.y1 + 1);
+  const items = [...d.paths || [], ...d.marks || []];
+  if (items.some((it) => it.role === "legend") || (d.texts || []).some((t) => t.role === "legend")) {
+    const own = items.filter((it) => it.role === "legend" && !it.axes);
+    if (!own.length) return null;
+    const frame = own.find((p) => p.segs && p.fill && p.segs.length === 1 && p.segs[0].length >= 4) || null;
+    const words2 = (d.texts || []).filter((t) => t.role === "legend" && !t.axes).flatMap((t) => [[t.x, t.y], [t.x + t.w, t.y + t.size]]);
+    const b2 = frame ? bboxOf(frame.segs[0]) : bboxOf([...own.flatMap((p) => p.segs ? p.segs.flat() : [[p.x, p.y]]), ...words2]);
+    return { box: b2, order: Math.min(...own.map((p) => p.order ?? 0)), frame };
+  }
+  const page = (d.width || 0) * (d.height || 0);
+  const words = texts.filter((t) => !t.angle && !parseTickLabel(t.s) && outside(t.x, t.y));
+  for (const p of d.paths || []) {
+    if (p.role || !p.fill || p.segs.length !== 1 || p.segs[0].length < 4) continue;
+    const b2 = bboxOf(p.segs[0]);
+    if (page && area(b2) > page * 0.5) continue;
+    if (!outside((b2.x0 + b2.x1) / 2, (b2.y0 + b2.y1) / 2)) continue;
+    const inFrame = words.filter((t) => t.x >= b2.x0 && t.x <= b2.x1 && t.y >= b2.y0 && t.y <= b2.y1);
+    if (inFrame.some((t) => sampleBefore(d, t, p.order ?? 0))) return { box: b2, order: p.order ?? 0, frame: p };
+  }
+  const found = words.map((t) => ({ t, s: sampleBefore(d, t, -Infinity) })).filter((f) => f.s && outside(...centerOf(f.s)));
+  if (!found.length) return null;
+  const b = bboxOf(found.flatMap(({ t, s }) => [[t.x, t.y], [t.x + t.w, t.y + t.size], ...s.segs ? s.segs.flat() : [[s.x - s.size / 2, s.y], [s.x + s.size / 2, s.y]]]));
+  return { box: { x0: b.x0 - 2, y0: b.y0 - 2, x1: b.x1 + 2, y1: b.y1 + 2 }, order: Math.min(...found.map(({ s }) => s.order ?? 0)), frame: null };
+}
+function sampleBefore(d, t, after) {
+  const mid = t.y + t.size * 0.35;
+  const row = (y) => Math.abs(y - mid) < t.size * 0.6;
+  const before = (x) => x < t.x && x > t.x - 40;
+  const mark = (d.marks || []).find((m) => (m.order ?? 0) >= after && row(m.y) && before(m.x) && m.shape !== "hline" && m.shape !== "vline");
+  if (mark) return mark;
+  return (d.paths || []).find((p) => {
+    if ((p.order ?? 0) < after) return false;
+    const b = bboxOf(p.segs.flat());
+    return row((b.y0 + b.y1) / 2) && b.y1 - b.y0 < t.size && before(b.x1 + 0.01) && t.x - b.x1 < Math.max(12, t.size * 1.6) && b.x1 - b.x0 > 3 && b.x1 - b.x0 < 40;
+  }) || null;
+}
+function legendEntries(d, legend, texts) {
+  if (!legend) return [];
+  const lb = legend.box;
+  const within = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1;
+  const words = texts.filter((t) => within(t.x, t.y) && !parseTickLabel(t.s)).sort((p, q) => q.y - p.y);
+  return words.map((t) => {
+    const label = t.s.replace(/\$/g, "");
+    const s = sampleBefore(d, t, legend.order);
+    if (!s) return { label, kind: null, t };
+    if (!s.segs) return { label, kind: "points", color: s.fill || s.stroke, shape: s.shape, t };
+    const r = s.fill && s.segs.length === 1 && rectOf(s.segs[0]);
+    return r && !s.stroke ? { label, kind: "bars", color: s.fill, t } : { label, kind: "line", color: s.stroke, t };
+  });
+}
+function legendDrawing(d, legend, entries, sinkOf, axesId) {
+  const lb = legend.box;
+  const out = { groups: /* @__PURE__ */ new Set(), ops: [] };
+  const svg = [...d.paths || [], ...d.marks || [], ...d.texts || []].some((it) => it.role === "legend");
+  const ours = (it) => it.role === "legend" && (axesId === null ? !it.axes : !axesId || it.axes === axesId);
+  const inBox = (x, y) => x >= lb.x0 - 1 && x <= lb.x1 + 1 && y >= lb.y0 - 1 && y <= lb.y1 + 1;
+  const drawn = (it) => svg ? ours(it) : !it.role && (it.order ?? -Infinity) >= legend.order && inBox(...centerOf(it));
+  const items = [
+    ...[...d.paths || [], ...d.marks || []].filter(drawn),
+    ...svg ? (d.texts || []).filter(ours) : (d.textOps || []).filter(drawn)
+  ];
+  const rows = entries.map((e, k) => ({ k, mid: e.t.y + e.t.size * 0.35, x0: e.t.x - 45, x: e.t.x, x1: e.t.x + (e.t.w || 0) + 2, size: e.t.size }));
+  for (const r of rows) {
+    const gaps = rows.filter((o) => o !== r && o.x1 > r.x0 && o.x0 < r.x1).map((o) => Math.abs(o.mid - r.mid)).filter((g) => g > 0);
+    r.half = gaps.length ? Math.min(...gaps) / 2 : r.size * 0.9;
+  }
+  const wide = (lb.x1 - lb.x0) * 0.85;
+  const rowOf2 = (it) => {
+    if (it === legend.frame) return null;
+    let cx, cy, w = 0;
+    if (it.segs) {
+      const b = bboxOf(it.segs.flat());
+      cx = (b.x0 + b.x1) / 2;
+      cy = (b.y0 + b.y1) / 2;
+      w = b.x1 - b.x0;
+    } else if (it.s != null) {
+      cx = it.x + (it.w || 0) / 2;
+      cy = it.y + it.size * 0.35;
+    } else if (it.ops && it.size != null && it.shape == null) {
+      cx = it.x;
+      cy = it.y + it.size * 0.35;
+    } else {
+      cx = it.x;
+      cy = it.y;
+    }
+    if (w >= wide) return null;
+    let best = null, score = Infinity;
+    for (const r of rows) {
+      const dy = Math.abs(cy - r.mid);
+      if (dy > r.half || cx < r.x0 || cx > r.x1) continue;
+      const sc = dy + (cx >= r.x ? 0 : (r.x - cx) / 100);
+      if (sc < score) {
+        score = sc;
+        best = r;
+      }
+    }
+    return best;
+  };
+  for (const it of items) {
+    const row = rowOf2(it);
+    const sink = row ? sinkOf(row.k) : null;
+    const key = it.gid || it.group;
+    if (sink) {
+      if (key && sink.groups) sink.groups.add(key);
+      if (it.ops && sink.ops) sink.ops.push(it.ops);
+    } else {
+      if (it.legendId) out.groups.add(it.legendId);
+      if (it.ops) out.ops.push(it.ops);
+    }
+  }
+  return out;
+}
+function attachErrors(layers, segs, axis, X, Y, warnings) {
+  if (!segs.length) return;
+  const left = [];
+  let lopsided = false;
+  for (const g of segs) {
+    const [[ax, ay], [bx, by]] = g.s;
+    let hit = null;
+    for (const layer2 of layers) {
+      if (layer2.kind !== "points" || layer2.color !== g.color) continue;
+      for (let i2 = 0; i2 < layer2.px.length; i2++) {
+        const px = layer2.px[i2], py = layer2.py[i2];
+        const ok = axis === "y" ? Math.abs(px - ax) < 0.05 && py >= Math.min(ay, by) - 0.05 && py <= Math.max(ay, by) + 0.05 : Math.abs(py - ay) < 0.05 && px >= Math.min(ax, bx) - 0.05 && px <= Math.max(ax, bx) + 0.05;
+        if (ok) {
+          hit = { layer: layer2, i: i2 };
+          break;
+        }
+      }
+      if (hit) break;
+    }
+    if (!hit) {
+      left.push(g);
+      continue;
+    }
+    const { layer, i } = hit;
+    if (g.group && layer.groups) layer.groups.add(g.group);
+    if (g.ops && layer.ops) layer.ops.push(g.ops);
+    const A = axis === "y" ? Y : X;
+    const lo = A.toData(axis === "y" ? Math.min(ay, by) : Math.min(ax, bx));
+    const hi = A.toData(axis === "y" ? Math.max(ay, by) : Math.max(ax, bx));
+    const v = layer.data[axis][i];
+    const key = axis === "y" ? "yErr" : "xErr";
+    if (!layer.data[key]) layer.data[key] = layer.data.x.map(() => null);
+    layer.data[key][i] = (hi - lo) / 2;
+    if (Math.abs(hi - v - (v - lo)) > 1e-6 * Math.max(Math.abs(hi - lo), 1e-12)) lopsided = true;
+  }
+  if (lopsided) warnings.push(`Some ${axis} error bars reach further one way than the other; they’re shown the same both ways.`);
+  if (left.length) warnings.push(`${left.length} ${axis === "y" ? "upright" : "level"} line${left.length === 1 ? "" : "s"} (error bars without markers?) weren’t read.`);
+}
+var flat = (s, k) => Math.abs(s[0][k] - s[1][k]) < 0.01;
+var isClosed = (p) => p.segs.length === 1 && p.segs[0].length > 2 && Math.abs(p.segs[0][0][0] - p.segs[0].at(-1)[0]) < 0.01 && Math.abs(p.segs[0][0][1] - p.segs[0].at(-1)[1]) < 0.01;
+var sameBox = (a, b) => Math.abs(a.x0 - b.x0) < EDGE && Math.abs(a.x1 - b.x1) < EDGE && Math.abs(a.y0 - b.y0) < EDGE && Math.abs(a.y1 - b.y1) < EDGE;
+function rectOf(pts) {
+  let p = pts;
+  if (p.length === 5 && Math.abs(p[0][0] - p[4][0]) < 0.01 && Math.abs(p[0][1] - p[4][1]) < 0.01) p = p.slice(0, 4);
+  if (p.length !== 4) return null;
+  for (let i = 0; i < 4; i++) {
+    const a = p[i], b = p[(i + 1) % 4];
+    if (!(Math.abs(a[0] - b[0]) < 0.01 || Math.abs(a[1] - b[1]) < 0.01)) return null;
+  }
+  return bboxOf(p);
+}
+function isSpine(p, b, box) {
+  if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) return false;
+  const upright = b.x1 - b.x0 < 0.01, level2 = b.y1 - b.y0 < 0.01;
+  if (upright && (Math.abs(b.x0 - box.x0) < EDGE || Math.abs(b.x0 - box.x1) < EDGE)) return b.y1 - b.y0 > (box.y1 - box.y0) * 0.5;
+  if (level2 && (Math.abs(b.y0 - box.y0) < EDGE || Math.abs(b.y0 - box.y1) < EDGE)) return b.x1 - b.x0 > (box.x1 - box.x0) * 0.5;
+  return false;
+}
+function isInnerTick(p, b, box) {
+  if (!p.stroke || p.segs.length !== 1 || p.segs[0].length !== 2) return false;
+  const len2 = Math.max(b.x1 - b.x0, b.y1 - b.y0);
+  if (len2 > TICK_MAX) return false;
+  const onEdge = Math.abs(b.y0 - box.y0) < EDGE || Math.abs(b.y1 - box.y1) < EDGE || Math.abs(b.x0 - box.x0) < EDGE || Math.abs(b.x1 - box.x1) < EDGE;
+  return onEdge;
+}
+function spansBox(p, box) {
+  if (p.segs.length !== 1 || p.segs[0].length !== 2) return false;
+  const b = bboxOf(p.segs[0]);
+  if (b.y1 - b.y0 < 0.01) return b.x1 - b.x0 >= (box.x1 - box.x0) * 0.98;
+  if (b.x1 - b.x0 < 0.01) return b.y1 - b.y0 >= (box.y1 - box.y0) * 0.98;
+  return false;
+}
+function dashStyle(dash, width) {
+  if (!dash || !dash.length || dash.every((v) => !v)) return "solid";
+  return dash[0] <= Math.max(1.5, width * 1.5) ? "dotted" : "dashed";
+}
+
+// client/src/utils/plotImport/toGraph.js
+var IMPORT_WIDTH = 560;
+var POINT_SIZES = [1.5, 2, 3, 4.5, 6];
+function columnBase(name50, taken) {
+  let base3 = String(name50 || "layer").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "layer";
+  if (/^\d/.test(base3)) base3 = `l_${base3}`;
+  let out = base3;
+  for (let n = 2; taken.has(out); n++) out = `${base3}_${n}`;
+  taken.add(out);
+  return out;
+}
+var cell = (v) => v === null || v === void 0 || !isFinite(v) ? "" : String(v);
+function plotToGraph(plot, { datasetName, choices = {}, dark = false } = {}) {
+  const taken = /* @__PURE__ */ new Set();
+  const columns = [];
+  const expressions = [];
+  const scale = (IMPORT_WIDTH - 60) / Math.max(1, plot.axes.box.x1 - plot.axes.box.x0);
+  for (const layer of plot.layers) {
+    const choice = choices[layer.id] || {};
+    if (choice.include === false) continue;
+    const name50 = (choice.name ?? layer.name) || layer.name;
+    const base3 = columnBase(name50, taken);
+    const col = (suffix) => `${base3}_${suffix}`;
+    const data = { dataset: datasetName, x: col("x"), y: col("y"), mark: layer.kind, opacity: 1 };
+    columns.push([col("x"), layer.data.x], [col("y"), layer.data.y]);
+    if (layer.data.x2) {
+      data.x2 = col("x2");
+      columns.push([col("x2"), layer.data.x2]);
+    }
+    if (layer.data.yErr) {
+      data.yErr = col("yerr");
+      columns.push([col("yerr"), layer.data.yErr]);
+    }
+    if (layer.data.xErr) {
+      data.xErr = col("xerr");
+      columns.push([col("xerr"), layer.data.xErr]);
+    }
+    if (layer.kind === "points") {
+      const r = (layer.size || 6) / 2 * scale;
+      data.size = POINT_SIZES.reduce((best, s) => Math.abs(s - r) < Math.abs(best - r) ? s : best, POINT_SIZES[0]);
+    }
+    const ex = { id: newExpressionId(), color: /^#[0-9a-f]{6}$/i.test(choice.color || "") ? choice.color : layer.color, data };
+    if (layer.kind === "line") {
+      ex.width = Math.max(0.5, Math.min(12, Math.round((layer.width || 1.5) * scale * 2) / 2));
+      if (layer.style && layer.style !== "solid") ex.style = layer.style;
+    }
+    if (choice.step > 0) ex.step = choice.step;
+    if (choice.until > 0 && (!(choice.step > 0) || choice.until > choice.step)) ex.until = choice.until;
+    expressions.push(ex);
+  }
+  const rows = Math.max(0, ...columns.map(([, v]) => v.length));
+  const lines = [columns.map(([n]) => n).join(",")];
+  for (let i = 0; i < rows; i++) lines.push(columns.map(([, v]) => cell(v[i])).join(","));
+  const csv = lines.join("\n") + "\n";
+  const { x, y } = plot.axes;
+  const aspect = plot.size.height / plot.size.width;
+  const graph = {
+    expressions,
+    view: { xMin: x.range[0], xMax: x.range[1], yMin: y.range[0], yMax: y.range[1] },
+    equalScale: false,
+    grid: !!plot.axes.grid,
+    axes: true,
+    axisNumbers: true,
+    xLabel: x.label || "",
+    yLabel: y.label || "",
+    theme: dark ? "dark" : "light",
+    background: "transparent",
+    showSliders: false,
+    lockView: false
+  };
+  if (x.scale === "log") graph.xScale = "log";
+  if (y.scale === "log") graph.yScale = "log";
+  return {
+    csv,
+    columns: columns.map(([n]) => n),
+    rows,
+    graph,
+    size: { w: IMPORT_WIDTH, h: Math.round(IMPORT_WIDTH * Math.min(1.2, Math.max(0.4, isFinite(aspect) ? aspect : 0.7))) }
+  };
+}
+function defaultChoices(plot, oneByOne = true, { figure = false } = {}) {
+  const byLegend = (layers) => [...layers].sort((a, b) => (a.legend ?? 1e9) - (b.legend ?? 1e9));
+  const out = {};
+  if (figure && plot.panels) {
+    let step = 0;
+    plot.panels.forEach((p, i) => {
+      out[p.id] = { include: true, name: p.name, step: oneByOne && i ? ++step : 0, until: 0 };
+      for (const l of byLegend(p.layers)) out[l.id] = { include: true, name: l.name, step: oneByOne ? ++step : 0, until: 0 };
+    });
+    return out;
+  }
+  byLegend(plot.layers).forEach((l, i) => {
+    out[l.id] = { include: true, name: l.name, step: oneByOne ? i + 1 : 0, until: 0 };
+  });
+  return out;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CIRCUIT_FIELDS,
@@ -25103,6 +26790,7 @@ function themeDocFromDeck(deck, name50) {
   HARMONICS_TEMPLATES,
   HEADING_WEIGHTS,
   HV,
+  IMPORT_WIDTH,
   INTERACTIONS,
   LABEL_STYLES,
   LOGIC_FIELDS,
@@ -25115,6 +26803,7 @@ function themeDocFromDeck(deck, name50) {
   MIN_SIZE,
   PERIODIC_FIELDS,
   PT,
+  PlotError,
   SH,
   SIZE_KEYS,
   TERM_ID,
@@ -25135,6 +26824,7 @@ function themeDocFromDeck(deck, name50) {
   cleanTextStyles,
   cleanThemeDoc,
   createMathParser,
+  defaultChoices,
   defaultEquation,
   defaultGraph,
   defaultGraph3d,
@@ -25156,11 +26846,17 @@ function themeDocFromDeck(deck, name50) {
   logicModel,
   looseEnds,
   mergeBibliography,
+  panelNamed,
+  panelPlot,
   parseBibtex,
   parseTiming,
   periodicBox,
   plainText,
+  plotFromDrawing,
+  plotToGraph,
   readBeamer,
+  readPdfDrawing,
+  readSvgDrawing,
   scopeThemeCss,
   sentenceParts,
   solveCircuit,

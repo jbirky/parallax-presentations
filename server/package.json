@@ -14,6 +14,7 @@
     "@hocuspocus/common": "^4.7.0",
     "@hocuspocus/server": "^4.7.0",
     "@modelcontextprotocol/server": "2.4.0",
+    "@xmldom/xmldom": "0.9.12",
     "cors": "^2.8.5",
     "csv-parse": "^6.2.1",
     "dotenv": "^17.4.2",

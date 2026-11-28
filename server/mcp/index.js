@@ -38,6 +38,8 @@ const { datasetList } = require('./datasets')
 const guides = require('./guides')
 const review = require('./review')
 const images = require('./images')
+const plots = require('./plots')
+const shared = require('./shared')
 const { safeFetch } = require('../services/safe-fetch')
 const { planFor } = require('../services/plans')
 const { presentationAccess } = require('../services/collaboration')
@@ -54,7 +56,7 @@ const INSTRUCTIONS = [
   'get_theme shows the presentation\'s theme, and what its stylesheet can target; update_deck gives it a theme, text styles, colors of its own (themeColors) and a stylesheet (themeCss), scoped to its slides.',
   'show_deck shows the presentation to the person in the chat, live, in apps that show MCP Apps (claude.ai and ChatGPT among them): call it once when you start changing it, so they can watch your changes land, and it tells you which slide they\'re looking at.',
   'Before your first change in a while, a version of the presentation is saved, so the person can undo your changes from History. A text box someone is typing in is theirs until they finish: if a change is refused for that, try again later or work elsewhere.',
-  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. add_image adds a picture from a public https URL, as base64, or from a file sent with request_upload. add_dataset adds data (CSV, TSV, JSON) for graphs to plot. Video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
+  'Besides text boxes and shapes, add_element adds graphs, equations, tables, code, LaTeX (TikZ), timelines, HTML embeds (your own HTML and JavaScript, such as a JSXGraph or D3 plot) and diagrams (circuit, Feynman, logic, free-body, Venn, timing, geometry), the periodic table and spherical harmonics: read the type\'s guide with get_element_guide first, then check the slide with render_slide. add_image adds a picture from a public https URL, as base64, or from a file sent with request_upload. add_dataset adds data (CSV, TSV, JSON) for graphs to plot. import_plot turns a figure saved from matplotlib (SVG or PDF) into a live Graph of its data, layer by layer. Video, molecules and plugins can\'t be added yet: describe those to the person, who can add them in the editor.',
 ].join(' ')
 
 // How long without an edit before the next one starts a new session, with a
@@ -80,7 +82,7 @@ const SLIDE_INPUT = ({
 const UPLOAD_INPUT = ({
   type: 'object',
   properties: {
-    filename: { type: 'string', minLength: 1, maxLength: 200, description: `The file's name, such as figure3.png or results.csv: a picture (${images.IMAGE_EXTENSIONS.join(', ')}) or data (${images.DATA_EXTENSIONS.join(', ')})` },
+    filename: { type: 'string', minLength: 1, maxLength: 200, description: `The file's name, such as figure3.png or results.csv: a picture (${images.IMAGE_EXTENSIONS.join(', ')}), data (${images.DATA_EXTENSIONS.join(', ')}), or a figure saved from matplotlib as .pdf (or .svg) for import_plot` },
     name: { type: 'string', minLength: 1, maxLength: 60, description: "For data: the dataset's name, which graphs plot it by (the file's name when left out)" },
   },
   required: ['filename'],
@@ -101,6 +103,29 @@ const IMAGE_INPUT = ({
     height: { type: 'number', description: 'Height in pixels' },
   },
   required: ['slide', 'alt'],
+  additionalProperties: false,
+})
+
+const PLOT_INPUT = ({
+  type: 'object',
+  properties: {
+    slide: SLIDE_INPUT.properties.slide,
+    upload: { type: 'string', maxLength: 300, description: 'A figure sent with request_upload (an .svg or .pdf): the upload path its answer gave, /uploads/…' },
+    url: { type: 'string', maxLength: 2000, description: 'A figure on the web, an SVG or a PDF, by its https address' },
+    data: { type: 'string', maxLength: Math.ceil(images.MAX_INLINE_BYTES / 3) * 4 + 4, description: 'A figure as SVG text, or an SVG or PDF as base64, up to 2 MB' },
+    name: { type: 'string', minLength: 1, maxLength: 60, description: "The dataset's name, which the graph plots by (from the file's name, or plot, when left out)" },
+    panel: {
+      description: "For a figure of several panels (subplots, insets): which one, by its number or name as an earlier import_plot listed them. The largest that reads when left out.",
+      anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', minLength: 1, maxLength: 100 }],
+    },
+    steps: { type: 'boolean', description: "Each layer appears at its own click, in the legend's order (the default), or false for all with the slide" },
+    leaveOut: { type: 'array', maxItems: 40, items: { type: 'string', maxLength: 100 }, description: "Layers to leave out, by name as the figure's legend has them" },
+    x: IMAGE_INPUT.properties.x,
+    y: IMAGE_INPUT.properties.y,
+    width: { type: 'number', description: 'Width in pixels; with no size, it fills the space under a title, keeping the figure\'s shape' },
+    height: IMAGE_INPUT.properties.height,
+  },
+  required: ['slide'],
   additionalProperties: false,
 })
 
@@ -231,7 +256,7 @@ const noSlide = (deck, slide) => {
 // (createMcpRoute); local is this server's address for its own renderer, and
 // site the site's public origin. With viewer: false (the account server,
 // which no MCP App host reaches yet), show_deck gives the editor's link.
-function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset }, { local, site, viewer: live = true } = {}) {
+function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset, importPlot }, { local, site, viewer: live = true } = {}) {
   const read = (name, title, description, input, run, more = {}) => ({ name, title, description, input, annotations: READ_ONLY, run, ...more })
   return [
     read('get_deck', 'Read the presentation outline',
@@ -344,6 +369,15 @@ function deckTools({ loadDeck, write, touch, render, renderSheet, datasets, prev
       annotations: WRITE,
       write: true,
       run: (link, input) => addDataset(link, input),
+    },
+    {
+      name: 'import_plot',
+      title: 'Import a matplotlib figure as a graph',
+      description: "Turn a figure saved from matplotlib (an SVG or a PDF) into a live Graph on a slide, as the editor's Plot import does: its axes are read from their numbered ticks and each layer's points, lines and bars from the drawing, then the data becomes a dataset of the presentation's and the Graph plots it, each layer in its color, at its own click unless steps is false. Better than a picture of the plot: it's sharp at any size, follows the theme, and its layers can build up. Give the figure one way: upload (from request_upload), url or data. Says what it read; check it with render_slide.",
+      input: PLOT_INPUT,
+      annotations: WRITE,
+      write: true,
+      run: (link, input) => importPlot(link, input),
     },
     ...WRITE_TOOLS.map(([name, title, description]) => ({
       name, title, description, input: SCHEMAS[name],
@@ -671,11 +705,14 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     if (why) return failure(why)
     const ext = require('path').extname(filename).toLowerCase()
     const data = images.DATA_EXTENSIONS.includes(ext)
-    if (!data && !images.IMAGE_EXTENSIONS.includes(ext)) return failure(`request_upload takes pictures (${images.IMAGE_EXTENSIONS.join(', ')}) and data (${images.DATA_EXTENSIONS.join(', ')}). Turn a PDF figure into a PNG first (for example pdftoppm -png -r 200).`)
+    // A PDF is a figure for import_plot; a PDF to show as a picture needs
+    // turning into one first
+    const figure = ext === '.pdf'
+    if (!data && !figure && !images.IMAGE_EXTENSIONS.includes(ext)) return failure(`request_upload takes pictures (${images.IMAGE_EXTENSIONS.join(', ')}), data (${images.DATA_EXTENSIONS.join(', ')}) and matplotlib figures for import_plot (.pdf, .svg).`)
     if (data && !datasetStore) return failure('This Parallax server can\'t take data through AI tools.')
     const access = await accessOf(link)
     if (!access) return failure(goneOf(link))
-    const ticket = tickets.make(link.id, { link, access, filename, data, name })
+    const ticket = tickets.make(link.id, { link, access, filename, data, figure, name })
     if (!ticket) return failure('There are 20 upload addresses waiting to be used already. Use those, or wait 10 minutes.')
     const address = `${site}/mcp/upload/${ticket}`
     return text([
@@ -685,7 +722,9 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       '',
       data
         ? 'Its answer is JSON with dataset, the name graphs plot it by, its rows and its columns.'
-        : 'Its answer is JSON with upload, the path to give add_image, and the picture\'s width and height in pixels.',
+        : figure
+          ? 'Its answer is JSON with upload, the path to give import_plot. To show a PDF as a picture instead, turn it into a PNG first (for example pdftoppm -png -r 200).'
+          : 'Its answer is JSON with upload, the path to give add_image (or import_plot, for an SVG saved from matplotlib), and the picture\'s width and height in pixels.',
     ].join('\n'))
   }
 
@@ -777,6 +816,120 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     }
   }
 
+  // ── import_plot: a matplotlib figure as a Graph and its dataset ──
+  const plotWords = n => (Number.isFinite(n) ? String(Number(n.toPrecision(4))) : String(n))
+  const axisText = (name, a) => `${name} axis${a.label ? ` "${a.label}"` : ''} from ${plotWords(a.range[0])} to ${plotWords(a.range[1])}${a.scale === 'log' ? ', logarithmic' : ''}${a.categories?.length ? ` (categories ${a.categories.slice(0, 8).join(', ')})` : ''}`
+  const panelLabel = (p, i) => `${i + 1}: ${shared.panelNamed(p)}${p.main ? ' (the main one)' : ''}${p.layers?.length ? `, ${p.layers.map(l => l.name).join(', ')}` : ', no layers that read'}`
+
+  async function importPlot(link, input) {
+    if (!uploads || !datasetStore) return failure('This Parallax server can\'t take figures through AI tools.')
+    const deck = await loadDeck(link)
+    if (!deck) return failure(goneOf(link))
+    const sources = ['upload', 'url', 'data'].filter(k => input[k] !== undefined)
+    if (sources.length !== 1) return failure('Give the figure one way: upload (from request_upload), url (an https address) or data (SVG text or base64).')
+    if (!format.findSlide(deck, input.slide)) return noSlide(deck, input.slide)
+    const why = await cantWrite(link)
+    if (why) return failure(why)
+    const access = await accessOf(link)
+    if (!access) return failure(goneOf(link))
+    const limit = Math.min(plots.MAX_PLOT_BYTES, fileLimit(access))
+    let bytes
+    let fileName = ''
+    if (input.upload !== undefined) {
+      const src = String(input.upload).trim()
+      if (!src.startsWith(`/uploads/${link.deckId}/`) || !(await uploads.exists(link.deckId, src))) {
+        return failure("That upload isn't one of this presentation's. Send the figure with request_upload, then give the upload path its answer gave.")
+      }
+      bytes = await uploads.read(link.deckId, src, limit)
+      if (!bytes) return failure('That upload couldn\'t be read back. Send the figure again with request_upload.')
+      fileName = require('path').basename(src)
+    } else if (input.url !== undefined) {
+      let url
+      try { url = new URL(input.url) } catch { return failure('url must be an https address.') }
+      if (url.protocol !== 'https:') return failure('url must be an https address.')
+      fileName = require('path').basename(url.pathname)
+      try {
+        const res = await fetchImage(url.href, { maxBytes: limit, totalMs: 20000 })
+        if (res.status !== 200) return failure(`${url.host} answered ${res.status} for that address, so there's no figure to import.`)
+        bytes = res.body
+      } catch (err) {
+        return failure(`The figure couldn't be fetched: ${String(err.message || err).split('\n')[0]}`)
+      }
+    } else {
+      const given = String(input.data)
+      bytes = /^\s*</.test(given) ? Buffer.from(given, 'utf8') : Buffer.from(given.replace(/^data:[^,]*,/, ''), 'base64')
+      if (bytes.length > images.MAX_INLINE_BYTES) return failure('data takes figures up to 2 MB. Send a bigger one with request_upload.')
+    }
+    let read
+    try {
+      read = await plots.readPlot(bytes)
+    } catch (err) {
+      if (err instanceof plots.PlotReadError) return failure(err.message)
+      throw err
+    }
+    let { plot } = read
+    // A figure of several panels: the one asked for, else the main one
+    const panels = plot.panels || []
+    let panelNote = ''
+    if (input.panel !== undefined) {
+      if (!panels.length) return failure('This figure has one panel, so there\'s no panel to choose: leave panel out.')
+      const asked = String(input.panel).trim().toLowerCase()
+      const i = /^\d+$/.test(asked) ? Number(asked) - 1 : panels.findIndex(p => shared.panelNamed(p).toLowerCase() === asked || String(p.name || '').toLowerCase() === asked)
+      const chosen = panels[i]
+      if (!chosen) return failure(`There's no panel ${JSON.stringify(input.panel)}. The figure's panels: ${panels.map(panelLabel).join('; ')}.`)
+      const one = shared.panelPlot(plot, chosen.id)
+      if (!one) return failure(`Panel ${i + 1} (${shared.panelNamed(chosen)}) has no points, lines or bars that read. The figure's panels: ${panels.map(panelLabel).join('; ')}.`)
+      plot = one
+    } else if (panels.length > 1) {
+      panelNote = `The figure has ${panels.length} panels; this is the main one. Give panel for another: ${panels.map(panelLabel).join('; ')}.`
+    }
+    const choices = shared.defaultChoices(plot, input.steps !== false)
+    const leaveOut = new Set((input.leaveOut || []).map(n => String(n).trim().toLowerCase()))
+    const unknown = [...leaveOut].filter(n => !plot.layers.some(l => String(l.name).toLowerCase() === n))
+    if (unknown.length) return failure(`The figure has no layer called ${unknown.map(n => JSON.stringify(n)).join(', ')}. Its layers: ${plot.layers.map(l => l.name).join(', ')}.`)
+    let step = 0
+    for (const l of [...plot.layers].sort((a, b) => (choices[a.id]?.step || 0) - (choices[b.id]?.step || 0))) {
+      if (leaveOut.has(String(l.name).toLowerCase())) choices[l.id] = { ...choices[l.id], include: false }
+      else if (choices[l.id]?.step > 0) choices[l.id] = { ...choices[l.id], step: ++step }
+    }
+    const kept = plot.layers.filter(l => choices[l.id]?.include !== false)
+    if (!kept.length) return failure('That leaves no layers to plot.')
+    const base = String(input.name || fileName.replace(/\.[^.]*$/, '') || 'plot').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'plot'
+    const first = shared.plotToGraph(plot, { datasetName: base, choices })
+    let added
+    try {
+      added = await addData(link, access, { buffer: Buffer.from(first.csv, 'utf8'), filename: `${base}.csv`, name: base })
+    } catch (err) {
+      if (err.dataProblem) return failure(err.message)
+      throw err
+    }
+    const { graph, size } = added.name !== base ? shared.plotToGraph(plot, { datasetName: added.name, choices }) : first
+    const spec = {
+      expressions: graph.expressions.map(({ id, until, width, ...line }) => ({ ...line, ...(width !== undefined && { width: Math.min(10, width) }) })),
+      view: graph.view, grid: graph.grid, axes: true, axisNumbers: true, xLabel: graph.xLabel, yLabel: graph.yLabel, background: 'transparent',
+      ...(graph.xScale && { xScale: graph.xScale }), ...(graph.yScale && { yScale: graph.yScale }),
+    }
+    // As add_image places a picture: as large as fits under a title, keeping its shape
+    const ratio = size.h / size.w
+    let { x, y, width, height } = input
+    if (width === undefined && height === undefined) { width = Math.min(840, 380 / ratio); height = width * ratio }
+    else if (width === undefined) width = height / ratio
+    else if (height === undefined) height = width * ratio
+    width = Math.round(width); height = Math.round(height)
+    if (x === undefined) x = Math.round(60 + (840 - width) / 2)
+    if (y === undefined) y = Math.round(130 + Math.max(0, (380 - height) / 2))
+    const result = await write(link, [{ op: 'add_element', slide: input.slide, type: 'graph', spec, x, y, width, height }])
+    const what = [
+      `Read ${read.kind === 'svg' ? 'an SVG' : 'a PDF'} figure${plot.producer ? ` from ${plot.producer}` : ''}: ${axisText('x', plot.axes.x)}; ${axisText('y', plot.axes.y)}.`,
+      `Layers: ${plot.layers.map(l => `${l.name} (${l.kind}, ${l.data.x.length} ${l.kind === 'bars' ? 'bars' : 'points'}, ${l.color}${l.fidelity === 'as drawn' ? ', as drawn' : ''}${choices[l.id]?.include === false ? ', left out' : choices[l.id]?.step > 0 ? `, at click ${choices[l.id].step}` : ''})`).join('; ')}.`,
+      ...(plot.warnings?.length ? [`What to check: ${plot.warnings.join(' ')}`] : []),
+      ...(panelNote ? [panelNote] : []),
+      `Its data is the dataset "${added.name}" (${added.rows ?? first.rows} rows: ${first.columns.join(', ')}).`,
+    ]
+    if (result.isError) return failure([...what, '', `The graph couldn't be added: ${result.content.map(c => c.text).join(' ')}`].join('\n'))
+    return text([...what, '', ...result.content.map(c => c.text), '', 'Check it with render_slide: its labels and colors may need a touch with update_element.'].join('\n'))
+  }
+
   // PUT /mcp/upload/<ticket>: the file a request_upload address is for, as
   // its body (curl -T). Answers JSON: { upload, type, width, height, bytes }.
   async function uploadRoute(req, res) {
@@ -815,10 +968,16 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
           throw err
         }
       }
+      const base = require('path').basename(filename).replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').slice(0, 80) || 'image'
+      if (found.figure) {
+        if (plots.plotKind(bytes) !== 'pdf') return res.status(415).json({ error: 'That isn\'t a PDF.' })
+        if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
+        const src = await uploads.store({ buffer: bytes, filename: `${base}.pdf`, deckId: link.deckId, ownerId: access.ownerId })
+        return res.status(201).json({ upload: src, type: 'application/pdf', bytes: bytes.length, next: 'Give this upload path to import_plot.' })
+      }
       const info = images.imageInfo(bytes)
       if (!info) return res.status(415).json({ error: 'That isn\'t a PNG, JPEG, GIF, WebP or SVG picture.' })
       if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
-      const base = require('path').basename(filename).replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g, '-').slice(0, 80) || 'image'
       const src = await uploads.store({ buffer: bytes, filename: base + info.ext, deckId: link.deckId, ownerId: access.ownerId })
       noteSize(src, info)
       res.status(201).json({ upload: src, type: info.mime, width: info.width, height: info.height, bytes: bytes.length })
@@ -882,7 +1041,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     }
   }
 
-  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset }
+  const tools = { loadDeck, write, touch, render, renderSheet, datasets, preview, requestUpload, addImage, addDataset, importPlot }
   const handler = createMcpHandler(ctx => buildServer(ctx.authInfo?.extra?.link, tools, ctx.authInfo?.extra), {
     onerror: err => console.error('AI link MCP request failed:', err.message),
   })

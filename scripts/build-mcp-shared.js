@@ -10,6 +10,9 @@
 // - the elements' defaults, templates and models, and the readers that
 //   check what an AI writes for them (Graph's math parser, equations'
 //   terms, set expressions, WaveJSON, geometry scripts), for guides.js
+// - the Plot import's readers (utils/plotImport): a matplotlib SVG or PDF
+//   into its axes and layers, and those as a Graph and its dataset, for
+//   import_plot (server/mcp/plots.js, given a DOM parser and pdf.js)
 //
 // Run after changing them or anything they import:
 //
@@ -48,6 +51,10 @@ const SOURCES = {
   'client/src/utils/textStyles.js': ['SIZE_KEYS', 'MIN_SIZE', 'MAX_SIZE', 'HEADING_WEIGHTS', 'DEFAULT_SIZES', 'textSizes', 'withTextStyles', 'cleanTextStyles'],
   'client/src/utils/scopeCss.js': ['scopeThemeCss', 'MAX_THEME_CSS'],
   'client/src/utils/customTheme.js': ['cleanThemeDoc', 'ThemeDocError', 'MAX_LIBRARY_THEMES', 'themeDocFromDeck'],
+  'client/src/utils/plotImport/svgReader.js': ['readSvgDrawing'],
+  'client/src/utils/plotImport/pdfReader.js': ['readPdfDrawing'],
+  'client/src/utils/plotImport/plotModel.js': ['plotFromDrawing', 'PlotError', 'panelPlot', 'panelNamed'],
+  'client/src/utils/plotImport/toGraph.js': ['plotToGraph', 'defaultChoices', 'IMPORT_WIDTH'],
 }
 
 // WaveDrom's renderer, as client/vite.config.js names it (timing diagrams)
