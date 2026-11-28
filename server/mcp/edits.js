@@ -362,6 +362,17 @@ const OPS = {
     ctx.touch(slide, [el])
     return `Added an image \`${el.id}\` to slide ${number} at x ${el.x}, y ${el.y}, ${el.width}×${el.height}.`
   },
+  // Which saved theme the deck's theme came from, as the Themes panel
+  // remembers it after Save as theme (client/src/utils/customTheme.js
+  // applyThemeDoc), so it offers to save later changes as a new version
+  set_theme_source(deck, input, ctx) {
+    const id = str(input.id, 'id', 64, { min: 1 })
+    const name = str(input.name, 'name', 80, { min: 1 })
+    const version = num(input.version, 'version', 1, 1e6)
+    deck.themeSource = { id, name, version }
+    ctx.deckChanged = true
+    return `Linked the presentation to the saved theme "${name}" (version ${version}).`
+  },
   update_deck(deck, input, ctx) {
     const done = []
     const title = str(input.title, 'title', 200, { min: 1 })
@@ -654,6 +665,7 @@ const OPS = {
 // What each operation takes, for checking the edits apply_edits is given
 const FIELDS = {
   add_image: ['slide', 'src', 'alt', 'fit', 'size', 'x', 'y', 'width', 'height'],
+  set_theme_source: ['id', 'name', 'version'],
   update_deck: ['title', 'theme', 'font', 'textStyles', 'themeColors', 'themeCss', 'transition', 'talkMinutes'],
   add_slide: ['layout', 'after', 'title', 'subtitle', 'body', 'notes', 'minutes'],
   update_slide: ['slide', 'layout', 'title', 'subtitle', 'body', 'notes', 'minutes', 'background'],
@@ -671,8 +683,8 @@ const DESTRUCTIVE = new Set(['delete_slide', 'delete_element'])
 // { lines, slideId, elementIds }: what each did, and the slide changed last
 // with the elements changed on it, for the AI's place in the avatars.
 // Ops only the server's own tools make (add_image, after storing the
-// picture), never apply_edits
-const INTERNAL_OPS = new Set(['add_image'])
+// picture; set_theme_source, after save_theme), never apply_edits
+const INTERNAL_OPS = new Set(['add_image', 'set_theme_source'])
 
 function runEdits(deck, edits, { datasets = null, internal = false } = {}) {
   if (!Array.isArray(edits) || !edits.length) fail('Give at least one edit.')

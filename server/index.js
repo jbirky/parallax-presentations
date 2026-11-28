@@ -2991,6 +2991,22 @@ const mcpDeckPage = async (deck, ownerId, opts = {}) => localizeLibraries(await 
 // a theme, or one of the landing page's templates with copies of the
 // datasets it plots, as Use this template makes it. Null when there's no such
 // template.
+// submit_plugin on /mcp (mcp/account.js): a repo's version tags with what
+// became of each here, or one imported for review, as the editor's plugin
+// import does (/api/plugin-repos/lookup and /import)
+const mcpPlugins = {
+  async lookup(repo) {
+    const info = await pluginImport.lookupRepo(repo)
+    const imported = await communityPlugins.hasTables(storage) ? await communityPlugins.importedVersions(storage, info.owner, info.repo) : {}
+    return { ...info, tags: info.tags.map(t => ({ ...t, status: imported[t.version] || null })) }
+  },
+  async submit({ userId, repo, tag }) {
+    if (!(await communityPlugins.hasTables(storage))) throw new pluginImport.PluginImportError('Community plugins need migration 021 on this server’s database', { status: 503 })
+    const fetched = await pluginImport.fetchVersion(repo, tag)
+    return communityPlugins.saveVersion(storage, fetched, { submittedBy: userId, reservedTypes: folderPluginTypes([bundledPluginsDir, userPluginsDir]) })
+  },
+}
+
 async function mcpCreateDeck({ userId, userPlan, title, theme, template }) {
   if (!template) return storage.createPresentation(blankPresentation({ title, theme }), userId)
   const found = EXAMPLE_SLUG.test(template) && await examples.templateToUse(storage, template)
@@ -3089,7 +3105,7 @@ const mcpOAuth = IS_CLOUD && storage.query ? createOAuth({
   storage, clerkClient, provision: provisionClerkUser,
   safeFetch: (...args) => require('./services/safe-fetch').safeFetch(...args),
 }) : null
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads, datasetStore: mcpDatasets, oauth: mcpOAuth }) : null
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, plugins: mcpPlugins, uploads: mcpUploads, datasetStore: mcpDatasets, oauth: mcpOAuth }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())

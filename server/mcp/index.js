@@ -440,7 +440,7 @@ const wantsMarkdown = req => req.query.format === 'md'
 // datasets' files are kept without R2. The route's leave(linkId) takes a
 // revoked link out of the avatars, and its preview serves the viewer's
 // /ai-preview/:token.
-function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck, uploads, datasetStore, fetchImage = safeFetch, oauth = null }) {
+function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox allow-scripts', localDir, renderer = thumbnails, previews = viewer.previewTokens(), createDeck, plugins = null, uploads, datasetStore, fetchImage = safeFetch, oauth = null }) {
   const loadDeck = link => storage.getPresentation(link.deckId, link.ownerId)
   const presence = collab ? createPresence(collab) : null
   const touch = (link, where) => presence?.touch(link, where)
@@ -919,7 +919,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   }
   // /mcp: the account-level server behind AI access tokens and apps that
   // sign in (account.js, oauth.js), on the same tools
-  const account = createAccountRoute({ storage, tools, deckTools, origin, createDeck, oauth })
+  const account = createAccountRoute({ storage, tools, deckTools, origin, createDeck, plugins, oauth })
 
   mcpRoute.leave = linkId => presence?.leave(linkId)
   mcpRoute.preview = previewPage

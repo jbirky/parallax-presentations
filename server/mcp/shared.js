@@ -5884,6 +5884,7 @@ __export(shared_exports, {
   stepsPerLine: () => stepsPerLine,
   termIdsIn: () => termIdsIn,
   textSizes: () => textSizes,
+  themeDocFromDeck: () => themeDocFromDeck,
   timingBox: () => timingBox,
   timingModel: () => timingModel,
   vennBox: () => vennBox,
@@ -25064,6 +25065,16 @@ function cleanThemeDoc(input) {
   }
   return doc;
 }
+function themeDocFromDeck(deck, name50) {
+  return cleanThemeDoc({
+    name: name50,
+    base: Object.prototype.hasOwnProperty.call(THEMES, deck?.theme) ? deck.theme : "black",
+    colors: cleanThemeColors(deck?.themeColors),
+    font: typeof deck?.globalFont === "string" ? deck.globalFont : null,
+    textStyles: cleanTextStyles(deck?.textStyles),
+    css: typeof deck?.themeCss === "string" ? deck.themeCss : null
+  });
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CIRCUIT_FIELDS,
@@ -25156,6 +25167,7 @@ function cleanThemeDoc(input) {
   stepsPerLine,
   termIdsIn,
   textSizes,
+  themeDocFromDeck,
   timingBox,
   timingModel,
   vennBox,

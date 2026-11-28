@@ -47,7 +47,7 @@ const SOURCES = {
   'client/src/utils/sphericalHarmonics.js': ['SH'],
   'client/src/utils/textStyles.js': ['SIZE_KEYS', 'MIN_SIZE', 'MAX_SIZE', 'HEADING_WEIGHTS', 'DEFAULT_SIZES', 'textSizes', 'withTextStyles', 'cleanTextStyles'],
   'client/src/utils/scopeCss.js': ['scopeThemeCss', 'MAX_THEME_CSS'],
-  'client/src/utils/customTheme.js': ['cleanThemeDoc', 'ThemeDocError', 'MAX_LIBRARY_THEMES'],
+  'client/src/utils/customTheme.js': ['cleanThemeDoc', 'ThemeDocError', 'MAX_LIBRARY_THEMES', 'themeDocFromDeck'],
 }
 
 // WaveDrom's renderer, as client/vite.config.js names it (timing diagrams)

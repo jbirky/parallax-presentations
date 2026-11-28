@@ -152,6 +152,7 @@ The server describes its tools to the agent. Among them:
 | `add_element`, `get_element_guide` | Add graphs, equations, tables, code, TikZ, HTML embeds and diagrams |
 | `request_upload`, `add_image`, `add_dataset` | Send pictures and data files from the agent's computer |
 | `check_deck`, `render_slide`, `render_deck` | Find problems on every slide, and see slides as they're presented |
+| `save_theme`, `submit_plugin` | Keep a presentation's look in your theme library; submit a community plugin for review |
 
 ## In Claude or ChatGPT: one presentation
 

@@ -25,6 +25,8 @@ safeFetchModule.safeFetch = async (url, opts) => {
 }
 const { DB, startCloudServer, until } = require('./helpers')
 const thumbnails = require('../services/slide-thumbnail')
+const pluginImport = require('../services/plugin-import')
+const { fakeGitHub, pluginFiles } = require('./fake-github')
 
 const skip = DB ? false : 'TEST_DATABASE_URL is not set'
 let t, call, createDeck, pool
@@ -449,6 +451,74 @@ describe('AI access tokens', { skip }, () => {
 
     const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
     assert.match(toolText(await callTool(reader, 'add_dataset', { deck: id, name: 'x', data: csv })), /can read presentations but not change them/)
+  })
+
+  it("saves a deck's look to the theme library, as a new version when asked, and links the deck to it", async () => {
+    const me = t.user('themer')
+    const id = await createDeck(me, 'Brand talk', { slides: SLIDES })
+    const { secret } = (await makeToken(me)).body
+    const live = await openLive(me, id)
+    const styled = await callTool(secret, 'update_deck', { deck: id, theme: 'white', themeColors: { accent: '#0055aa' } })
+    assert.equal(styled.body.result.isError, undefined, toolText(styled))
+
+    const saved = await callTool(secret, 'save_theme', { deck: id, name: '  Lab   brand ' })
+    assert.equal(saved.body.result.isError, undefined, toolText(saved))
+    assert.match(toolText(saved), /^Saved "Lab brand" to the person's theme library, version 1: based on .+, its own accent\./)
+    assert.match(toolText(saved), /The presentation now uses it/)
+    let library = (await call(me, 'GET', '/api/themes')).body
+    assert.deepEqual(library.map(x => [x.name, x.base, x.colors?.accent, x.version]), [['Lab brand', 'white', '#0055aa', 1]])
+    await until(() => live.deck().themeSource?.id === library[0].id, 'the deck to remember its saved theme')
+    assert.deepEqual(live.deck().themeSource, { id: library[0].id, name: 'Lab brand', version: 1 })
+
+    // A name that's taken needs replace, which saves a new version
+    const taken = await callTool(secret, 'save_theme', { deck: id, name: 'lab brand' })
+    assert.equal(taken.body.result.isError, true)
+    assert.match(toolText(taken), /already has a theme called "Lab brand" \(version 1\)\. Give replace: true/)
+    await callTool(secret, 'update_deck', { deck: id, themeColors: { accent: '#aa0000' } })
+    const replaced = await callTool(secret, 'save_theme', { deck: id, name: 'Lab brand', replace: true })
+    assert.match(toolText(replaced), /version 2/)
+    library = (await call(me, 'GET', '/api/themes')).body
+    assert.deepEqual(library.map(x => [x.name, x.colors?.accent, x.version]), [['Lab brand', '#aa0000', 2]])
+    await until(() => live.deck().themeSource?.version === 2, 'the deck to remember the new version')
+
+    // Only a team's presentation has a team library; a read-only token saves nothing
+    assert.match(toolText(await callTool(secret, 'save_theme', { deck: id, name: 'Team look', library: 'team' })), /isn't a team's/)
+    const reader = (await makeToken(me, { name: 'Reader', scopes: ['decks:read'] })).body.secret
+    assert.match(toolText(await callTool(reader, 'save_theme', { deck: id, name: 'Other' })), /can read presentations but not save themes/)
+    assert.equal((await call(me, 'GET', '/api/themes')).body.length, 1)
+  })
+
+  it('submits a community plugin for review, and says where its versions stand', async () => {
+    const me = t.user('plugger')
+    const { secret } = (await makeToken(me)).body
+    const owner = `someone-${t.run}`
+    const repo = `https://github.com/${owner}/lorenz`
+    const gh = fakeGitHub()
+    gh.repo(owner, 'lorenz').tag('v1.0.0', pluginFiles({ id: `io.github.someone${t.run}.lorenz`, type: `lorenz-${t.run}` }))
+    gh.repo(owner, 'empty')
+    const real = { ...pluginImport }
+    pluginImport.fetchVersion = (url, tag) => real.fetchVersion(url, tag, { fetcher: gh.fetcher })
+    pluginImport.lookupRepo = url => real.lookupRepo(url, { fetcher: gh.fetcher })
+    try {
+      assert.match(toolText(await callTool(secret, 'submit_plugin', { repo })), /Version tags, newest first:\n- v1\.0\.0 \(1\.0\.0\): not submitted/)
+      assert.match(toolText(await callTool(secret, 'submit_plugin', { repo: `${owner}/empty` })), /no version tags yet/)
+
+      const sent = await callTool(secret, 'submit_plugin', { repo, tag: 'v1.0.0' })
+      assert.equal(sent.body.result.isError, undefined, toolText(sent))
+      assert.match(toolText(sent), new RegExp(`^Submitted Lorenz attractor 1\\.0\\.0 \\(tag v1\\.0\\.0, commit [0-9a-f]{7}\\) from github\\.com/${owner}/lorenz\\. It's waiting for review\\.`))
+      const { rows } = await pool.query('SELECT v.status, v.submitted_by FROM plugin_versions v JOIN plugins p ON p.id = v.plugin_id WHERE p.repo_owner = $1', [owner])
+      assert.deepEqual(rows.map(r => r.status), ['pending'])
+      assert.equal(rows[0].submitted_by, await t.userId(me))
+
+      assert.match(toolText(await callTool(secret, 'submit_plugin', { repo })), /- v1\.0\.0 \(1\.0\.0\): waiting for review/)
+      const again = await callTool(secret, 'submit_plugin', { repo, tag: 'v1.0.0' })
+      assert.equal(again.body.result.isError, true)
+      assert.match(toolText(again), /already imported \(pending\)/)
+      assert.match(toolText(await callTool(secret, 'submit_plugin', { repo, tag: 'v9.0.0' })), /has no version tag named/)
+    } finally {
+      Object.assign(pluginImport, real)
+      await pool.query('DELETE FROM plugins WHERE repo_owner = $1', [owner])
+    }
   })
 
   it('reads the element guides without a deck', async () => {
