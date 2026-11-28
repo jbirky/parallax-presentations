@@ -413,6 +413,17 @@ app.get('/templates/:slug/slides/:key/:n.jpg', (req, res, next) => {
 const pluginPages = require('./services/plugin-pages')
 const GALLERY_SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const pageAnalytics = () => (analyticsOn ? { websiteId: UMAMI_WEBSITE_ID } : null)
+// /privacy: the hosted service's privacy policy (services/legal-pages.js,
+// from server/content/privacy.md). Cloud only.
+const legalPages = require('./services/legal-pages')
+app.get('/privacy', deckPageLimiter, async (req, res, next) => {
+  if (!IS_CLOUD) return next()
+  try {
+    res.type('html').send(await legalPages.legalPage('privacy', { origin: siteOrigin(req), analytics: pageAnalytics(), index: SEARCH_INDEXING }))
+  } catch (err) {
+    next(err)
+  }
+})
 app.get('/plugins', deckPageLimiter, async (req, res, next) => {
   if (!IS_CLOUD) return next()
   try {

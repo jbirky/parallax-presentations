@@ -319,6 +319,11 @@ describe('the self-hosted version', () => {
     assert.deepEqual((await call('GET', '/api/folders')).body.folders.map(f => f.name), ['Talks'])
   })
 
+  it('has no privacy policy of the hosted site’s', async () => {
+    const res = await fetch(`${base}/privacy`)
+    assert.doesNotMatch(await res.text(), /<h1>Privacy policy<\/h1>/)
+  })
+
   it('has no teams', async () => {
     const token = 'A'.repeat(43)
     for (const [method, url, body] of [

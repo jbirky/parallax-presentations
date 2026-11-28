@@ -13,6 +13,8 @@ const TAGLINE = 'Interactive slides for complex concepts'
 const DESCRIPTION = 'Parallax is a slide editor that runs in your browser. Put live graphs, physics and circuit diagrams, equations and 3D molecules on a slide, and move them while you present. Free to start, open source.'
 const SOCIAL_IMAGE = { path: '/social/parallax.jpg', width: 1200, height: 630 }
 const SUPPORT = 'support@parallax-presentations.com'
+// The hosted site has a privacy policy (/privacy, legal-pages.js); a self-hosted copy doesn't
+const CLOUD = process.env.PARALLAX_MODE === 'cloud'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
@@ -230,7 +232,7 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
     <footer>
       <div class="wrap">
         <span>© 2026 Jess Birky. Licensed under AGPL-3.0.</span>
-        <span>Support: <a href="mailto:${SUPPORT}">${SUPPORT}</a></span>
+        <span>Support: <a href="mailto:${SUPPORT}">${SUPPORT}</a>${CLOUD ? ' · <a href="/privacy">Privacy</a>' : ''}</span>
       </div>
     </footer>
     <script>${THEME_TOGGLE}</script>${script ? `
