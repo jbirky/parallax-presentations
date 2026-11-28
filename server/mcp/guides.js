@@ -22,6 +22,7 @@
 const { randomUUID } = require('crypto')
 const shared = require('./shared')
 const { fail, num, int, str, color, oneOf, bool, list, object, only } = require('./checks')
+const { versions: LIBRARY_VERSIONS } = require('../services/libraries')
 
 const ink = dark => (dark ? '#ffffff' : '#1a1a1a')
 const ID = /^[A-Za-z0-9_-]{1,40}$/
@@ -266,13 +267,27 @@ const readLatex = el => [`   ${/\\begin\{tikzpicture\}|\\tikz[[{]/.test(el.conte
 // scripts kept apart from the presentation (generateHTML's buildHtmlEmbed),
 // as one a person pastes into the editor does
 const MAX_HTML = 50000
+// As utils/embedRuntime.js's MAX_EMBED_STEPS
+const MAX_EMBED_STEPS = 50
+// The libraries an HTML embed can link to at the versions Parallax has
+const EMBED_LIBRARIES = [['jsxgraph', 'JSXGraph'], ['d3', 'D3'], ['three', 'three.js'], ['p5', 'p5.js'], ['animejs', 'anime.js'], ['katex', 'KaTeX']]
+  .filter(([name]) => LIBRARY_VERSIONS[name])
+  .map(([name, label]) => `${label} ${LIBRARY_VERSIONS[name]}${name === 'animejs' && LIBRARY_VERSIONS[name].startsWith('3.') ? ' (write its version 3 API: anime({ targets }), anime.timeline())' : ''}`)
+  .join(', ')
 function makeHtml(spec) {
-  only(spec, 'spec', ['content'])
+  only(spec, 'spec', ['content', 'steps', 'stepStart'])
   if (typeof spec.content !== 'string' || !spec.content.trim()) fail('An HTML element needs content: its HTML, with the <script> and <style> it needs.')
   if (spec.content.length > MAX_HTML) fail(`content can be up to ${MAX_HTML} characters.`)
-  return { content: spec.content.replace(/\r\n?/g, '\n') }
+  const fields = { content: spec.content.replace(/\r\n?/g, '\n') }
+  if (spec.steps !== undefined) fields.steps = int(spec.steps, 'steps', 0, MAX_EMBED_STEPS)
+  if (spec.stepStart !== undefined) fields.stepStart = int(spec.stepStart, 'stepStart', 1, 1000)
+  if (fields.steps && !/parallax\.(onStep|step)\b/.test(fields.content)) fail('steps are clicks the embed hears with parallax.onStep(fn), and its content never calls it. Leave steps out, or draw each step in parallax.onStep((step, from) => …).')
+  return fields
 }
-const readHtml = el => [`   HTML, ${plural(String(el.content || '').split('\n').length, 'line')}: ${json(clip(el.content, 400))}`]
+const readHtml = el => {
+  const steps = Number(el.steps) > 0 ? `, ${plural(Number(el.steps), 'step')} from the slide's click ${Number(el.stepStart) || 1}` : ''
+  return [`   HTML, ${plural(String(el.content || '').split('\n').length, 'line')}${steps}: ${json(clip(el.content, 400))}`]
+}
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const YEAR = /^-?\d{1,5}$/
@@ -557,9 +572,11 @@ Example: { "op": "add_element", "slide": 2, "type": "timeline", "x": 40, "y": 16
   html: {
     label: 'HTML embed', about: 'Your own HTML and JavaScript on a slide: an interactive plot or simulation with a library such as JSXGraph, D3, three.js or p5.js.',
     make: makeHtml, size: () => ({ w: 840, h: 400 }), fit: { cap: 1, fw: 0.9, fh: 0.8 }, read: readHtml,
-    text: `spec: { "content": "HTML" }.
+    text: `spec: { "content": "HTML" }, and optional steps and stepStart (below).
 
-The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${'JSXGraph 1.11.1, D3 7, three.js, p5.js, anime.js, KaTeX'}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank, so check it with render_slide. For plots of functions, a graph element is simpler and follows the theme.
+The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${EMBED_LIBRARIES}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank or half drawn: render_slide shows it and lists what it reported (errors with their line in content, files that didn't load, console.error). For plots of functions, a graph element is simpler and follows the theme.
+
+Steps and showing: the page has parallax.steps, parallax.step and parallax.shown. To build the figure as the presenter clicks, give spec steps (how many of the slide's clicks it takes, up to ${MAX_EMBED_STEPS}) and optionally stepStart (the slide's click its step 1 comes at; 1 if left out), and draw in parallax.onStep((step, from) => …), called at once and whenever the step changes, from 0 (before the first click) to steps. Stepping back to a slide jumps straight to the last step, so draw the state of a step and animate only a change of one. Every slide's embeds load when the deck opens, so start an animation in parallax.onShow(fn), not on load, and pause it in parallax.onHide(fn). In the editor and in render_slide pictures the embed is at its last step, so that state should show the whole figure.
 
 Put the words and numbers a person may want to change (labels, table rows, list items, settings) in a content block instead of the script: <script type="application/json" data-parallax-content>{ "caption": "Parts list", "parts": [{ "item": 1, "description": "Fairing" }] }</script>, read with JSON.parse(document.querySelector('[data-parallax-content]').textContent), and set as textContent. The editor shows that block as a form (lists of records become tables), so the text changes without the code. Optional "$labels": { "key": "Label" } names fields and "$choices": { "key": ["A", "B"] } makes menus. To change an embed that has one, change its JSON and keep the rest of the content as it is.
 
@@ -639,7 +656,7 @@ for (const [type, d] of Object.entries(PART_DIAGRAMS)) {
 const FIELDS = {
   graph: shared.GRAPH_FIELDS, equation: shared.EQUATION_FIELDS,
   table: ['data', 'headerRow', 'fontSize', 'textColor', 'borderColor', 'borderWidth', 'headerBgColor', 'cellBgColor', 'cellPadding'],
-  code: ['content', 'language', 'fontSize', 'borderRadius'], latex: ['content', 'textColor', 'fontSize'], html: ['content'],
+  code: ['content', 'language', 'fontSize', 'borderRadius'], latex: ['content', 'textColor', 'fontSize'], html: ['content', 'steps', 'stepStart'],
   timeline: ['startDate', 'endDate', 'items', 'tickSpacing', 'lineColor', 'dotColor', 'textColor', 'fontSize'],
   ...Object.fromEntries(Object.entries(PART_DIAGRAMS).map(([type, d]) => [type, d.fields])),
   venn: shared.VENN_FIELDS, timing: shared.TIMING_FIELDS, geometry: shared.GEOMETRY_FIELDS, periodic: shared.PERIODIC_FIELDS, harmonics: shared.HARMONICS_FIELDS,

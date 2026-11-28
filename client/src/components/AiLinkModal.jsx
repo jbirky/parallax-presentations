@@ -16,7 +16,7 @@ const inputStyle = { flex: 1, minWidth: 0, padding: '8px 12px', borderRadius: 6,
 const LIFETIMES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [null, 'Never expires']]
 
 const dateOf = iso => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-function ago(iso) {
+export function ago(iso) {
   const minutes = Math.round((Date.now() - new Date(iso)) / 60000)
   if (minutes < 2) return 'just now'
   if (minutes < 60) return `${minutes} min ago`

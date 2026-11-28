@@ -94,4 +94,4 @@ async function datasetList(storage, deckId, { ownerId, localDir }) {
   return parts.join('\n')
 }
 
-module.exports = { datasetList }
+module.exports = { datasetList, describe }

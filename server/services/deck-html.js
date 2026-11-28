@@ -6503,7 +6503,8 @@ var THEME_LIST = [
   { id: "downforce", label: "Downforce", background: "#0f1115", backgroundCss: "radial-gradient(118% 115% at 88% -12%, #1c2232 0%, rgba(15, 17, 21, 0) 62%), #0f1115", text: "#e8ebf0", heading: "#ffffff", link: "#ff5a4f", accent: "#b98cff", dark: true, reveal: "black", font: "Saira, sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 40, h3Size: 28, headingFont: "Saira, sans-serif", headingWeight: 700 }, note: "Race-car engineering as a timing screen: kerbs under titles, a circuit in sectors, start lights for sections, radio-message quotes, a sector footer" },
   { id: "parallax", label: "Parallax", background: "#fafaf7", text: "#2e2e31", heading: "#0c0c0d", link: "#1a56e8", accent: "#ee2b2b", dark: false, reveal: "white", font: "Inter, sans-serif", textStyles: { bodySize: 26, h1Size: 72, h2Size: 44, h3Size: 30, headingFont: "Archivo, sans-serif", headingWeight: 800 }, note: "Parallax’s own look: ink on paper, the red and blue of 3D glasses as stereo fringes, title and section slides in ink with red and blue edges, the mark, Archivo headings" },
   { id: "fabrica", label: "Fabrica", background: "#f6f0e4", backgroundCss: "radial-gradient(130% 125% at 50% 42%, #f6f0e4 58%, #ebe0ca)", text: "#3b2f26", heading: "#2a1f17", link: "#2c5a85", accent: "#a8322a", dark: false, reveal: "white", font: "'Source Sans 3', sans-serif", textStyles: { bodySize: 26, h1Size: 64, h2Size: 46, h3Size: 30, headingFont: "'EB Garamond', Georgia, serif", headingWeight: 600 }, note: "Anatomy as the plates of an atlas: sepia on vellum inside a double rule, an engraved nerve, artery and vein on the title slide, label-leader bullets, Latin names in italic, a clinical-note quote, EB Garamond headings" },
-  { id: "manifest", label: "Manifest", background: "#f3f2ee", text: "#26343f", heading: "#0e2233", link: "#1d5fae", accent: "#e8590c", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 76, h2Size: 50, h3Size: 32, headingFont: "'Big Shoulders Display', sans-serif", headingWeight: 800 }, note: "International supply chains and logistics: a world map of shipping lanes on the title slide and a container ship at a night terminal on section slides, both moving when presented; a container train under titles, container bullets, milestone lists, a split-flap Big Number, a tracking footer" }
+  { id: "manifest", label: "Manifest", background: "#f3f2ee", text: "#26343f", heading: "#0e2233", link: "#1d5fae", accent: "#e8590c", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 76, h2Size: 50, h3Size: 32, headingFont: "'Big Shoulders Display', sans-serif", headingWeight: 800 }, note: "International supply chains and logistics: a world map of shipping lanes on the title slide and a container ship at a night terminal on section slides, both moving when presented; a container train under titles, container bullets, milestone lists, a split-flap Big Number, a tracking footer" },
+  { id: "regolith", label: "Regolith", background: "#f4f1eb", text: "#34303f", heading: "#1d1a2b", link: "#2a6f97", accent: "#d9541e", dark: false, reveal: "white", font: "'IBM Plex Sans', sans-serif", textStyles: { bodySize: 26, h1Size: 70, h2Size: 46, h3Size: 30, headingFont: "'Space Grotesk', sans-serif", headingWeight: 700 }, note: "Planetary science, surface to core: a planet cut away to its core on the title slide and a planet’s limb with a probe on its parachute on section slides, both moving when presented; a crater profile under titles, lit-planet bullets, numbered lists as a stratigraphic column, an orbiting Big Number, a core-sample footer" }
 ];
 var THEMES = Object.fromEntries(THEME_LIST.map((t) => [t.id, t]));
 function themeOf(id) {
@@ -11704,6 +11705,203 @@ var GRAPH_DECK_SCRIPT = `
         else if (k === 'Home') Reveal.slide(0);
         else if (k === 'End') Reveal.slide(Number.MAX_VALUE);
       });
+    })();
+`;
+
+// client/src/utils/embedRuntime.js
+var MAX_EMBED_STEPS = 50;
+var MAX_PROBLEMS = 10;
+function htmlEmbedModel(el) {
+  const steps = Math.round(Number(el?.steps));
+  const start = Math.round(Number(el?.stepStart));
+  return {
+    steps: steps >= 1 && steps <= MAX_EMBED_STEPS ? steps : 0,
+    stepStart: start >= 1 && start <= 1e3 ? start : 1
+  };
+}
+function htmlEmbedSteps(el) {
+  if (el?.type !== "html") return [];
+  const { steps, stepStart } = htmlEmbedModel(el);
+  const out = [];
+  for (let k = 1; k <= steps && stepStart - 1 + k <= 1e3; k++) out.push([stepStart - 1 + k, k]);
+  return out;
+}
+var safeId = (id) => String(id || "").replace(/[^A-Za-z0-9_-]/g, "");
+function htmlEmbedStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = safeId(el.id);
+    for (const [n, k] of htmlEmbedSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-html-step="${id}" data-html-step-at="${k}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function embedRuntime(win, init) {
+  var state = { step: init.step, shown: init.shown };
+  var listeners = { step: [], show: [], hide: [] };
+  var reported = 0;
+  function report(message) {
+    if (reported >= init.max) return;
+    reported++;
+    try {
+      win.parent.postMessage({ source: "parallax-embed", type: "problem", message: String(message).slice(0, 300) }, "*");
+    } catch (e) {
+    }
+  }
+  function lineOf2(n) {
+    return n > init.from ? n - init.shift : n;
+  }
+  win.addEventListener("error", function(e) {
+    var t = e.target;
+    if (t && t !== win && t.tagName) {
+      report("Couldn’t load " + (t.src || t.href || "a <" + t.tagName.toLowerCase() + ">"));
+      return;
+    }
+    report((e.message || "Script error") + (e.lineno ? " (line " + lineOf2(e.lineno) + ")" : ""));
+  }, true);
+  win.addEventListener("unhandledrejection", function(e) {
+    var r = e.reason;
+    report("Unhandled promise rejection: " + (r && r.message ? r.message : r));
+  });
+  var original = win.console && win.console.error;
+  if (original) {
+    win.console.error = function() {
+      report(Array.prototype.map.call(arguments, function(a) {
+        return a && a.message ? a.message : String(a);
+      }).join(" "));
+      return original.apply(this, arguments);
+    };
+  }
+  function call(fn, a, b) {
+    try {
+      fn(a, b);
+    } catch (err) {
+      setTimeout(function() {
+        throw err;
+      });
+    }
+  }
+  function on(kind, fn, now) {
+    if (typeof fn !== "function") return function() {
+    };
+    listeners[kind].push(fn);
+    if (now) now();
+    return function() {
+      listeners[kind] = listeners[kind].filter(function(f) {
+        return f !== fn;
+      });
+    };
+  }
+  win.addEventListener("message", function(e) {
+    var d = e.data;
+    if (e.source !== win.parent || !d || d.source !== "parallax-deck" || d.type !== "embed-state") return;
+    var step = Math.max(0, Math.min(init.steps, Math.round(Number(d.step)) || 0));
+    var shown = !!d.shown;
+    if (shown && !state.shown) {
+      state.shown = true;
+      listeners.show.slice().forEach(function(fn) {
+        call(fn);
+      });
+    }
+    if (step !== state.step) {
+      var from = state.step;
+      state.step = step;
+      listeners.step.slice().forEach(function(fn) {
+        call(fn, step, from);
+      });
+    }
+    if (!shown && state.shown) {
+      state.shown = false;
+      listeners.hide.slice().forEach(function(fn) {
+        call(fn);
+      });
+    }
+  });
+  var prev = win.parallax || {};
+  var api = {
+    onStep: function(fn) {
+      return on("step", fn, function() {
+        call(fn, state.step, state.step);
+      });
+    },
+    onShow: function(fn) {
+      return on("show", fn, state.shown ? function() {
+        call(fn);
+      } : null);
+    },
+    onHide: function(fn) {
+      return on("hide", fn);
+    }
+  };
+  Object.defineProperties(api, {
+    steps: { value: init.steps, enumerable: true },
+    step: { get: function() {
+      return state.step;
+    }, enumerable: true },
+    shown: { get: function() {
+      return state.shown;
+    }, enumerable: true }
+  });
+  if (prev.datasets) api.datasets = prev.datasets;
+  win.parallax = Object.freeze(api);
+  try {
+    win.parent.postMessage({ source: "parallax-embed", type: "hello" }, "*");
+  } catch (e) {
+  }
+}
+var RUNTIME_CODE = `(${embedRuntime.toString()})`.replace(/<\/(script)/gi, "<\\/$1");
+function embedPage(userHtml, before, { steps = 0, inDeck = false } = {}) {
+  const init = { steps, step: inDeck ? 0 : steps, shown: !inDeck, max: MAX_PROBLEMS };
+  const script = (s) => `<script>${s}</script>`;
+  const injected = (shift2, from) => before + script(`${RUNTIME_CODE}(window,${JSON.stringify({ ...init, shift: shift2, from })});`);
+  const shift = (injected(0, 0).match(/\n/g) || []).length;
+  const at = injectionPoint(userHtml);
+  const linesBefore = (userHtml.slice(0, at).match(/\n/g) || []).length;
+  return userHtml.slice(0, at) + injected(shift, linesBefore + shift) + userHtml.slice(at);
+}
+function injectionPoint(userHtml) {
+  for (const re of [/<head[^>]*>/i, /<html[^>]*>/i, /<!doctype[^>]*>/i]) {
+    const m = re.exec(userHtml);
+    if (m) return m.index + m[0].length;
+  }
+  return 0;
+}
+var EMBED_PROBLEMS_SCRIPT = `<script>
+  (function() {
+    var problems = window.__parallaxEmbedProblems = [];
+    window.addEventListener('message', function(e) {
+      var d = e.data;
+      if (!d || d.source !== 'parallax-embed' || d.type !== 'problem' || problems.length >= 200) return;
+      var frame = Array.prototype.find.call(document.querySelectorAll('iframe[data-html-embed]'), function(f) { return f.contentWindow === e.source; });
+      if (!frame) return;
+      var section = frame.closest('section[data-slide-id]');
+      problems.push({ element: frame.getAttribute('data-html-embed'), slide: section ? section.getAttribute('data-slide-id') : null, message: String(d.message).slice(0, 300) });
+    });
+  })();
+</script>`;
+var HTML_EMBED_DECK_SCRIPT = `
+    (function() {
+      function frames() { return document.querySelectorAll('iframe[data-html-embed]'); }
+      function stepOf(frame, slide) {
+        var id = frame.getAttribute('data-html-embed'), n = 0;
+        slide.querySelectorAll('.fragment[data-html-step]').forEach(function(m) {
+          if (m.getAttribute('data-html-step') === id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-html-step-at') || 0);
+        });
+        return n;
+      }
+      function send(frame) {
+        var slide = frame.closest('section');
+        if (!slide || !frame.contentWindow) return;
+        try { frame.contentWindow.postMessage({ source: 'parallax-deck', type: 'embed-state', shown: slide === Reveal.getCurrentSlide(), step: stepOf(frame, slide) }, '*'); } catch (e) {}
+      }
+      function sendAll() { Array.prototype.forEach.call(frames(), send); }
+      Array.prototype.forEach.call(frames(), function(frame) { frame.addEventListener('load', function() { send(frame); }); });
+      window.addEventListener('message', function(e) {
+        var d = e.data;
+        if (!d || d.source !== 'parallax-embed' || d.type !== 'hello' || !Reveal.isReady()) return;
+        var frame = Array.prototype.find.call(frames(), function(f) { return f.contentWindow === e.source; });
+        if (frame) send(frame);
+      });
+      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sendAll); });
     })();
 `;
 
@@ -37952,8 +38150,608 @@ var manifest_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
 }
 `;
 
+// raw:client/src/themes/regolith.css
+var regolith_default = `/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Copyright (c) 2026 Jessica Birky */
+
+/* The Regolith theme's stylesheet: planetary science, from the surface to
+   the core. Content slides are a field geologist's plate: deep-space ink
+   (#1d1a2b, text #34303f) on pale dust (#f4f1eb), lava orange (#d9541e;
+   #b8431a for text) for what's marked, ice blue (#2a6f97) for links and
+   sulfur (#e3a72f) for highlights. The title and section slides are
+   space (#0d0c17). Headings in Space Grotesk, text in IBM Plex Sans,
+   labels, units and data in Space Mono (utils/themes.js: the fonts and
+   the text sizes, which the Themes panel's Text tab can change). The
+   interior's colors, outside in (sky #9cc7e4, crust #7a6a5e, mantle
+   #c4763a, outer core #e3a72f, inner core #f3d27a), are the theme's
+   strata: under the title slide's title, numbered lists, quotes and the
+   footer.
+
+   It's scoped to .deck-theme-regolith, a class on the editor's canvas and
+   thumbnails, the presented deck's .reveal and the PDF's pages. In the
+   editor and the PDF the slide (.px-slide) carries the class too, so rules
+   about the slide itself name both. The editor loads it with the app
+   (main.jsx); presented decks and the PDF write it into their page
+   (utils/themeCss.js). Presented decks are drawn on reveal.js's white theme.
+
+   The title slide is a planet cut away to its core: crust, lid, mantle,
+   outer and inner core in a wedge, clouds across its lit face, a moon.
+   Section slides are a planet's limb seen from orbit, its haze lit, a
+   probe hanging under its parachute. In a presented deck they move (SVG
+   with SMIL and CSS animation, in the slide's ::after): the mantle's
+   convection cells turn, a plume rises from the core and the inner core
+   glows; the probe comes down as a section slide opens. Everywhere else
+   (the editor, thumbnails, the PDF, print, reduced motion, reveal's
+   overview) each is one still frame of the same drawing.
+
+   Under content titles is a crater in profile, the ground's cross-section
+   under it; presented, it's surveyed left to right as the slide opens.
+   Bullets are lit planets; numbered lists are a stratigraphic column, each
+   item a layer deeper. A Heading 4 is an orbit-marked label, a Heading 6 a
+   landing ellipse's field label. Inline code is a measured value; a quote
+   is a field note under the strata, its bold first words its label;
+   tables are a data sheet. The Big Number sits in an orbit that swings in
+   as its slide opens. The footer is a core sample: with its sections in
+   sequence, each a layer of the strata, those passed solid, the current
+   one marked, those to come faint. The pictures are SVG, written into
+   this file as data URIs, and stay off slides with a background of their
+   own. */
+
+/* reveal.js: links ice blue, the arrows and the progress bar too */
+.deck-theme-regolith {
+  --r-background-color: #f4f1eb;
+  --r-main-color: #34303f;
+  --r-heading-color: #1d1a2b;
+  --r-link-color: #2a6f97;
+  --r-link-color-dark: #1f5577;
+  --r-link-color-hover: #b8431a;
+  --r-selection-background-color: #f8d6c0;
+  --r-selection-color: #1d1a2b;
+  --rg-planet: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='500 100 244 316' width='244' height='316'%3E%3Cg%3E%3Cpath d='M607.1 341.2A25 25 0 0 1 561.7 346M561.4 353.6L561.7 346L568.4 349.6M559.5 325.8A25 25 0 0 1 605 321M605.2 313.4L605 321L598.2 317.4' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 583.3 333.5' to='360 583.3 333.5' dur='14s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg%3E%3Cg transform='translate(581.3 258.1) scale(-1 1) translate(-581.3 -258.1)'%3E%3Cpath d='M605.1 265.9A25 25 0 0 1 559.7 270.6M559.5 278.3L559.7 270.6L566.4 274.3M557.6 250.4A25 25 0 0 1 603 245.6M603.2 238L603 245.6L596.3 242' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 581.3 258.1' to='-360 581.3 258.1' dur='16s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg%3E%3Cpath d='M639.9 199A25 25 0 0 1 594.5 203.8M594.3 211.4L594.5 203.8L601.2 207.4M592.4 183.6A25 25 0 0 1 637.8 178.8M638 171.2L637.8 178.8L631.1 175.2' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 616.1 191.3' to='360 616.1 191.3' dur='18s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg%3E%3Cpath d='M656.4 307.8A13 13 0 0 1 632.8 310.3M632.6 317.9L632.8 310.3L639.5 313.9M631.7 299.8A13 13 0 0 1 655.3 297.3M655.5 289.7L655.3 297.3L648.6 293.7' fill='none' stroke='%23fff6e6' stroke-opacity='0.6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 644 303.8' to='360 644 303.8' dur='7s' repeatCount='indefinite'/%3E%3C/g%3E%3Cg%3E%3Cg transform='translate(657.7 244.6) scale(-1 1) translate(-657.7 -244.6)'%3E%3Cpath d='M670.1 248.6A13 13 0 0 1 646.4 251.1M646.2 258.7L646.4 251.1L653.2 254.7M645.3 240.6A13 13 0 0 1 669 238.1M669.2 230.5L669 238.1L662.2 234.5' fill='none' stroke='%23fff6e6' stroke-opacity='0.6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 657.7 244.6' to='-360 657.7 244.6' dur='8s' repeatCount='indefinite'/%3E%3C/g%3E%3Ccircle r='6' fill='%23ffe2a8' fill-opacity='0'%3E%3Canimate attributeName='cx' values='612;542.5' dur='7s' repeatCount='indefinite'/%3E%3Canimate attributeName='cy' values='279.8;272.5' dur='7s' repeatCount='indefinite'/%3E%3Canimate attributeName='fill-opacity' values='0;.9;.9;0' keyTimes='0;.15;.75;1' dur='7s' repeatCount='indefinite'/%3E%3Canimate attributeName='r' values='5;7;3' dur='7s' repeatCount='indefinite'/%3E%3C/circle%3E%3Cpath d='M728 292L674.1 325.7A63.6 63.6 0 0 1 694.3 238.1Z' fill='%23fffbe8' fill-opacity='0'%3E%3Canimate attributeName='fill-opacity' values='0;.35;0' dur='5s' repeatCount='indefinite'/%3E%3C/path%3E%3C/svg%3E");
+  --rg-planet-base: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cdefs%3E%3CradialGradient id='rgP' cx='651.7' cy='198.7' r='328.6' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23f3dba2'/%3E%3Cstop offset='.34' stop-color='%23d7a965'/%3E%3Cstop offset='.62' stop-color='%2394623a'/%3E%3Cstop offset='.86' stop-color='%233e2819'/%3E%3Cstop offset='1' stop-color='%231d130d'/%3E%3C/radialGradient%3E%3CradialGradient id='rgH' cx='728' cy='292' r='246' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0.862' stop-color='%23f3d79a' stop-opacity='.42'/%3E%3Cstop offset='1' stop-color='%23f3d79a' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='rgM' cx='728' cy='292' r='190.8' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='.58' stop-color='%23e08a45'/%3E%3Cstop offset='1' stop-color='%23c4763a'/%3E%3C/radialGradient%3E%3CradialGradient id='rgO' cx='728' cy='292' r='110.2' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='.54' stop-color='%23f2bd5c'/%3E%3Cstop offset='1' stop-color='%23e9a444'/%3E%3C/radialGradient%3E%3CradialGradient id='rgI' cx='728' cy='292' r='59.4' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23fff7dc'/%3E%3Cstop offset='1' stop-color='%23f8e3a0'/%3E%3C/radialGradient%3E%3CclipPath id='rgD'%3E%3Ccircle cx='728' cy='292' r='212'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='902' cy='74' r='10' fill='%232a2633'/%3E%3Cpath d='M902 64a10 10 0 0 0 0 20a6 10 0 0 1 0-20z' fill='%23d8d2c6'/%3E%3Ccircle cx='728' cy='292' r='246' fill='url(%23rgH)'/%3E%3Ccircle cx='728' cy='292' r='212' fill='url(%23rgP)'/%3E%3Cg clip-path='url(%23rgD)' fill='none' stroke='%23f6e7c4' stroke-linecap='round'%3E%3Cpath d='M506 134.7Q728 83.8 950 124.5' stroke-width='9.5' stroke-opacity='0.16'/%3E%3Cpath d='M506 182.3Q728 129.9 950 171.8' stroke-width='9.7' stroke-opacity='0.09'/%3E%3Cpath d='M506 226.9Q728 181.2 950 217.8' stroke-width='11.3' stroke-opacity='0.08'/%3E%3Cpath d='M506 260.1Q728 222.8 950 252.7' stroke-width='11.5' stroke-opacity='0.14'/%3E%3Cpath d='M506 329.6Q728 273.9 950 318.4' stroke-width='12.7' stroke-opacity='0.14'/%3E%3Cpath d='M506 353.5Q728 315.6 950 345.9' stroke-width='5.1' stroke-opacity='0.12'/%3E%3Cpath d='M506 406.5Q728 355.6 950 396.3' stroke-width='6.9' stroke-opacity='0.07'/%3E%3Cpath d='M506 459.3Q728 402.8 950 448' stroke-width='11.7' stroke-opacity='0.12'/%3E%3Cpath d='M506 500.4Q728 455.5 950 491.5' stroke-width='10.3' stroke-opacity='0.12'/%3E%3C/g%3E%3Cpath d='M728 292L552.7 414.7A214 214 0 0 1 624.3 104.8Z' fill='%23120c08' fill-opacity='.55'/%3E%3Cpath d='M548.2 404.3A212 212 0 0 1 615.7 112.2L620.7 120.3A202.5 202.5 0 0 0 556.3 399.3Z' fill='%237a6a5e'/%3E%3Cpath d='M556.3 399.3A202.5 202.5 0 0 1 620.7 120.3L626.9 130.2A190.8 190.8 0 0 0 566.2 393.1Z' fill='%238b5a3c'/%3E%3Cpath d='M566.2 393.1A190.8 190.8 0 0 1 626.9 130.2L669.6 198.5A110.2 110.2 0 0 0 634.5 350.4Z' fill='url(%23rgM)'/%3E%3Cpath d='M634.5 350.4A110.2 110.2 0 0 1 669.6 198.5L696.5 241.7A59.4 59.4 0 0 0 677.7 323.5Z' fill='url(%23rgO)'/%3E%3Cpath d='M728 292L677.7 323.5A59.4 59.4 0 0 1 696.5 241.7Z' fill='url(%23rgI)'/%3E%3Cpath d='M677.7 323.5A59.4 59.4 0 0 1 696.5 241.7M634.5 350.4A110.2 110.2 0 0 1 669.6 198.5M566.2 393.1A190.8 190.8 0 0 1 626.9 130.2M556.3 399.3A202.5 202.5 0 0 1 620.7 120.3' fill='none' stroke='%232a1a10' stroke-opacity='.28' stroke-width='1.2'/%3E%3Cpath d='M548.2 404.3L728 292L615.7 112.2' fill='none' stroke='%23f6e7c4' stroke-opacity='.7' stroke-width='1.4' stroke-linejoin='round'/%3E%3Ccircle cx='728' cy='292' r='213.5' fill='none' stroke='%23f6dfa8' stroke-opacity='.55' stroke-width='2.5'/%3E%3C/svg%3E");
+  --rg-planet-still: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cdefs%3E%3CradialGradient id='rgP' cx='651.7' cy='198.7' r='328.6' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23f3dba2'/%3E%3Cstop offset='.34' stop-color='%23d7a965'/%3E%3Cstop offset='.62' stop-color='%2394623a'/%3E%3Cstop offset='.86' stop-color='%233e2819'/%3E%3Cstop offset='1' stop-color='%231d130d'/%3E%3C/radialGradient%3E%3CradialGradient id='rgH' cx='728' cy='292' r='246' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0.862' stop-color='%23f3d79a' stop-opacity='.42'/%3E%3Cstop offset='1' stop-color='%23f3d79a' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='rgM' cx='728' cy='292' r='190.8' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='.58' stop-color='%23e08a45'/%3E%3Cstop offset='1' stop-color='%23c4763a'/%3E%3C/radialGradient%3E%3CradialGradient id='rgO' cx='728' cy='292' r='110.2' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='.54' stop-color='%23f2bd5c'/%3E%3Cstop offset='1' stop-color='%23e9a444'/%3E%3C/radialGradient%3E%3CradialGradient id='rgI' cx='728' cy='292' r='59.4' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23fff7dc'/%3E%3Cstop offset='1' stop-color='%23f8e3a0'/%3E%3C/radialGradient%3E%3CclipPath id='rgD'%3E%3Ccircle cx='728' cy='292' r='212'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='902' cy='74' r='10' fill='%232a2633'/%3E%3Cpath d='M902 64a10 10 0 0 0 0 20a6 10 0 0 1 0-20z' fill='%23d8d2c6'/%3E%3Ccircle cx='728' cy='292' r='246' fill='url(%23rgH)'/%3E%3Ccircle cx='728' cy='292' r='212' fill='url(%23rgP)'/%3E%3Cg clip-path='url(%23rgD)' fill='none' stroke='%23f6e7c4' stroke-linecap='round'%3E%3Cpath d='M506 134.7Q728 83.8 950 124.5' stroke-width='9.5' stroke-opacity='0.16'/%3E%3Cpath d='M506 182.3Q728 129.9 950 171.8' stroke-width='9.7' stroke-opacity='0.09'/%3E%3Cpath d='M506 226.9Q728 181.2 950 217.8' stroke-width='11.3' stroke-opacity='0.08'/%3E%3Cpath d='M506 260.1Q728 222.8 950 252.7' stroke-width='11.5' stroke-opacity='0.14'/%3E%3Cpath d='M506 329.6Q728 273.9 950 318.4' stroke-width='12.7' stroke-opacity='0.14'/%3E%3Cpath d='M506 353.5Q728 315.6 950 345.9' stroke-width='5.1' stroke-opacity='0.12'/%3E%3Cpath d='M506 406.5Q728 355.6 950 396.3' stroke-width='6.9' stroke-opacity='0.07'/%3E%3Cpath d='M506 459.3Q728 402.8 950 448' stroke-width='11.7' stroke-opacity='0.12'/%3E%3Cpath d='M506 500.4Q728 455.5 950 491.5' stroke-width='10.3' stroke-opacity='0.12'/%3E%3C/g%3E%3Cpath d='M728 292L552.7 414.7A214 214 0 0 1 624.3 104.8Z' fill='%23120c08' fill-opacity='.55'/%3E%3Cpath d='M548.2 404.3A212 212 0 0 1 615.7 112.2L620.7 120.3A202.5 202.5 0 0 0 556.3 399.3Z' fill='%237a6a5e'/%3E%3Cpath d='M556.3 399.3A202.5 202.5 0 0 1 620.7 120.3L626.9 130.2A190.8 190.8 0 0 0 566.2 393.1Z' fill='%238b5a3c'/%3E%3Cpath d='M566.2 393.1A190.8 190.8 0 0 1 626.9 130.2L669.6 198.5A110.2 110.2 0 0 0 634.5 350.4Z' fill='url(%23rgM)'/%3E%3Cpath d='M634.5 350.4A110.2 110.2 0 0 1 669.6 198.5L696.5 241.7A59.4 59.4 0 0 0 677.7 323.5Z' fill='url(%23rgO)'/%3E%3Cpath d='M728 292L677.7 323.5A59.4 59.4 0 0 1 696.5 241.7Z' fill='url(%23rgI)'/%3E%3Cpath d='M677.7 323.5A59.4 59.4 0 0 1 696.5 241.7M634.5 350.4A110.2 110.2 0 0 1 669.6 198.5M566.2 393.1A190.8 190.8 0 0 1 626.9 130.2M556.3 399.3A202.5 202.5 0 0 1 620.7 120.3' fill='none' stroke='%232a1a10' stroke-opacity='.28' stroke-width='1.2'/%3E%3Cpath d='M548.2 404.3L728 292L615.7 112.2' fill='none' stroke='%23f6e7c4' stroke-opacity='.7' stroke-width='1.4' stroke-linejoin='round'/%3E%3Ccircle cx='728' cy='292' r='213.5' fill='none' stroke='%23f6dfa8' stroke-opacity='.55' stroke-width='2.5'/%3E%3Cg transform='rotate(12 583.3 333.5)'%3E%3Cpath d='M607.1 341.2A25 25 0 0 1 561.7 346M561.4 353.6L561.7 346L568.4 349.6M559.5 325.8A25 25 0 0 1 605 321M605.2 313.4L605 321L598.2 317.4' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3Cg transform='rotate(-12 581.3 258.1)'%3E%3Cg transform='translate(581.3 258.1) scale(-1 1) translate(-581.3 -258.1)'%3E%3Cpath d='M605.1 265.9A25 25 0 0 1 559.7 270.6M559.5 278.3L559.7 270.6L566.4 274.3M557.6 250.4A25 25 0 0 1 603 245.6M603.2 238L603 245.6L596.3 242' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/g%3E%3Cg transform='rotate(12 616.1 191.3)'%3E%3Cpath d='M639.9 199A25 25 0 0 1 594.5 203.8M594.3 211.4L594.5 203.8L601.2 207.4M592.4 183.6A25 25 0 0 1 637.8 178.8M638 171.2L637.8 178.8L631.1 175.2' fill='none' stroke='%23fff6e6' stroke-opacity='0.78' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3Cg transform='rotate(12 644 303.8)'%3E%3Cpath d='M656.4 307.8A13 13 0 0 1 632.8 310.3M632.6 317.9L632.8 310.3L639.5 313.9M631.7 299.8A13 13 0 0 1 655.3 297.3M655.5 289.7L655.3 297.3L648.6 293.7' fill='none' stroke='%23fff6e6' stroke-opacity='0.6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3Cg transform='rotate(-12 657.7 244.6)'%3E%3Cg transform='translate(657.7 244.6) scale(-1 1) translate(-657.7 -244.6)'%3E%3Cpath d='M670.1 248.6A13 13 0 0 1 646.4 251.1M646.2 258.7L646.4 251.1L653.2 254.7M645.3 240.6A13 13 0 0 1 669 238.1M669.2 230.5L669 238.1L662.2 234.5' fill='none' stroke='%23fff6e6' stroke-opacity='0.6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/g%3E%3C/g%3E%3Ccircle cx='572' cy='275.6' r='6' fill='%23ffe2a8' fill-opacity='.85'/%3E%3C/svg%3E");
+  --rg-limb: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cdefs%3E%3CradialGradient id='rgL' cx='780' cy='430' r='980' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23ecca88'/%3E%3Cstop offset='.22' stop-color='%23c8924f'/%3E%3Cstop offset='.48' stop-color='%237a5030'/%3E%3Cstop offset='.78' stop-color='%232b1c13'/%3E%3Cstop offset='1' stop-color='%23140e0b'/%3E%3C/radialGradient%3E%3ClinearGradient id='rgT' x1='0' x2='1' y1='0' y2='0'%3E%3Cstop offset='0' stop-color='%230d0c17' stop-opacity='.86'/%3E%3Cstop offset='.42' stop-color='%230d0c17' stop-opacity='0'/%3E%3C/linearGradient%3E%3CclipPath id='rgC'%3E%3Ccircle cx='480' cy='2010' r='1610'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='480' cy='2010' r='1626' fill='none' stroke='%23f4d697' stroke-opacity='0.08' stroke-width='26'/%3E%3Ccircle cx='480' cy='2010' r='1617' fill='none' stroke='%23f4d697' stroke-opacity='0.2' stroke-width='10'/%3E%3Ccircle cx='480' cy='2010' r='1612.5' fill='none' stroke='%23f4d697' stroke-opacity='0.7' stroke-width='3.5'/%3E%3Ccircle cx='480' cy='2010' r='1610' fill='url(%23rgL)'/%3E%3Cg clip-path='url(%23rgC)' fill='none' stroke='%23f6e7c4' stroke-linecap='round'%3E%3Ccircle cx='480' cy='2010' r='1596' stroke-width='6.9' stroke-opacity='0.08' stroke-dasharray='151 87 33 45' stroke-dashoffset='26'/%3E%3Ccircle cx='480' cy='2010' r='1574.8' stroke-width='4.9' stroke-opacity='0.07' stroke-dasharray='88 67 90 31' stroke-dashoffset='127'/%3E%3Ccircle cx='480' cy='2010' r='1562.9' stroke-width='7.6' stroke-opacity='0.13' stroke-dasharray='115 72 65 27' stroke-dashoffset='81'/%3E%3Ccircle cx='480' cy='2010' r='1537.9' stroke-width='5.2' stroke-opacity='0.07' stroke-dasharray='78 37 109 55' stroke-dashoffset='2'/%3E%3Ccircle cx='480' cy='2010' r='1523.3' stroke-width='4.6' stroke-opacity='0.08' stroke-dasharray='115 41 51 34' stroke-dashoffset='104'/%3E%3Ccircle cx='480' cy='2010' r='1504.5' stroke-width='4.8' stroke-opacity='0.07' stroke-dasharray='110 69 68 17' stroke-dashoffset='74'/%3E%3Ccircle cx='480' cy='2010' r='1484.9' stroke-width='5.9' stroke-opacity='0.11' stroke-dasharray='144 58 134 54' stroke-dashoffset='173'/%3E%3C/g%3E%3Crect x='0' y='300' width='960' height='240' fill='url(%23rgT)' clip-path='url(%23rgC)'/%3E%3C/svg%3E");
+  --rg-limb-still: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Cdefs%3E%3CradialGradient id='rgL' cx='780' cy='430' r='980' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23ecca88'/%3E%3Cstop offset='.22' stop-color='%23c8924f'/%3E%3Cstop offset='.48' stop-color='%237a5030'/%3E%3Cstop offset='.78' stop-color='%232b1c13'/%3E%3Cstop offset='1' stop-color='%23140e0b'/%3E%3C/radialGradient%3E%3ClinearGradient id='rgT' x1='0' x2='1' y1='0' y2='0'%3E%3Cstop offset='0' stop-color='%230d0c17' stop-opacity='.86'/%3E%3Cstop offset='.42' stop-color='%230d0c17' stop-opacity='0'/%3E%3C/linearGradient%3E%3CclipPath id='rgC'%3E%3Ccircle cx='480' cy='2010' r='1610'/%3E%3C/clipPath%3E%3C/defs%3E%3Ccircle cx='480' cy='2010' r='1626' fill='none' stroke='%23f4d697' stroke-opacity='0.08' stroke-width='26'/%3E%3Ccircle cx='480' cy='2010' r='1617' fill='none' stroke='%23f4d697' stroke-opacity='0.2' stroke-width='10'/%3E%3Ccircle cx='480' cy='2010' r='1612.5' fill='none' stroke='%23f4d697' stroke-opacity='0.7' stroke-width='3.5'/%3E%3Ccircle cx='480' cy='2010' r='1610' fill='url(%23rgL)'/%3E%3Cg clip-path='url(%23rgC)' fill='none' stroke='%23f6e7c4' stroke-linecap='round'%3E%3Ccircle cx='480' cy='2010' r='1596' stroke-width='6.9' stroke-opacity='0.08' stroke-dasharray='151 87 33 45' stroke-dashoffset='26'/%3E%3Ccircle cx='480' cy='2010' r='1574.8' stroke-width='4.9' stroke-opacity='0.07' stroke-dasharray='88 67 90 31' stroke-dashoffset='127'/%3E%3Ccircle cx='480' cy='2010' r='1562.9' stroke-width='7.6' stroke-opacity='0.13' stroke-dasharray='115 72 65 27' stroke-dashoffset='81'/%3E%3Ccircle cx='480' cy='2010' r='1537.9' stroke-width='5.2' stroke-opacity='0.07' stroke-dasharray='78 37 109 55' stroke-dashoffset='2'/%3E%3Ccircle cx='480' cy='2010' r='1523.3' stroke-width='4.6' stroke-opacity='0.08' stroke-dasharray='115 41 51 34' stroke-dashoffset='104'/%3E%3Ccircle cx='480' cy='2010' r='1504.5' stroke-width='4.8' stroke-opacity='0.07' stroke-dasharray='110 69 68 17' stroke-dashoffset='74'/%3E%3Ccircle cx='480' cy='2010' r='1484.9' stroke-width='5.9' stroke-opacity='0.11' stroke-dasharray='144 58 134 54' stroke-dashoffset='173'/%3E%3C/g%3E%3Crect x='0' y='300' width='960' height='240' fill='url(%23rgT)' clip-path='url(%23rgC)'/%3E%3Cpath d='M820 92Q822 58 860 56Q898 58 900 92Q890 86 880 92Q870 86 860 92Q850 86 840 92Q830 86 820 92Z' fill='%23e9542a'/%3E%3Cpath d='M840 92Q842 64 860 56M880 92Q878 64 860 56' fill='none' stroke='%23f6e7c4' stroke-width='1.6'/%3E%3Cpath d='M826 74Q860 66 894 74' fill='none' stroke='%23f6e7c4' stroke-opacity='.7' stroke-width='1.2'/%3E%3Cpath d='M820 92L854 150M840 92L857 150M860 92L860 150M880 92L863 150M900 92L866 150' stroke='%23d9d3c7' stroke-opacity='.75' stroke-width='.9'/%3E%3Cpath d='M860 150v4' stroke='%23d9d3c7' stroke-width='1.4'/%3E%3Ccircle cx='860' cy='166' r='12' fill='%23cfc8bb'/%3E%3Cpath d='M848 166a12 12 0 0 0 24 0z' fill='%238d877c'/%3E%3Cellipse cx='860' cy='166' rx='19' ry='4.5' fill='%235d5850' stroke='%23e7e1d4' stroke-width='1'/%3E%3Ccircle cx='856' cy='161' r='3' fill='%23fffaf0' fill-opacity='.8'/%3E%3C/svg%3E");
+  --rg-probe: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 136' width='96' height='136'%3E%3Cpath d='M8 40Q10 6 48 4Q86 6 88 40Q78 34 68 40Q58 34 48 40Q38 34 28 40Q18 34 8 40Z' fill='%23e9542a'/%3E%3Cpath d='M28 40Q30 12 48 4M68 40Q66 12 48 4' fill='none' stroke='%23f6e7c4' stroke-width='1.6'/%3E%3Cpath d='M14 22Q48 14 82 22' fill='none' stroke='%23f6e7c4' stroke-opacity='.7' stroke-width='1.2'/%3E%3Cpath d='M8 40L42 98M28 40L45 98M48 40L48 98M68 40L51 98M88 40L54 98' stroke='%23d9d3c7' stroke-opacity='.75' stroke-width='.9'/%3E%3Cpath d='M48 98v4' stroke='%23d9d3c7' stroke-width='1.4'/%3E%3Ccircle cx='48' cy='114' r='12' fill='%23cfc8bb'/%3E%3Cpath d='M36 114a12 12 0 0 0 24 0z' fill='%238d877c'/%3E%3Cellipse cx='48' cy='114' rx='19' ry='4.5' fill='%235d5850' stroke='%23e7e1d4' stroke-width='1'/%3E%3Ccircle cx='44' cy='109' r='3' fill='%23fffaf0' fill-opacity='.8'/%3E%3C/svg%3E");
+  --rg-stars: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 960 540' width='960' height='540'%3E%3Ccircle cx='310.9' cy='81.5' r='1.1' fill='%23ffffff' fill-opacity='0.28'/%3E%3Ccircle cx='351.1' cy='31.3' r='0.9' fill='%23ffffff' fill-opacity='0.39'/%3E%3Ccircle cx='416.3' cy='37.7' r='0.5' fill='%23ffffff' fill-opacity='0.61'/%3E%3Ccircle cx='793.8' cy='66.9' r='0.6' fill='%23ffffff' fill-opacity='0.66'/%3E%3Ccircle cx='554' cy='214.2' r='0.6' fill='%23ffffff' fill-opacity='0.28'/%3E%3Ccircle cx='278' cy='77.9' r='0.5' fill='%23ffffff' fill-opacity='0.62'/%3E%3Ccircle cx='98.9' cy='308.5' r='0.6' fill='%23ffffff' fill-opacity='0.49'/%3E%3Ccircle cx='541.8' cy='334.3' r='0.8' fill='%23d6e4ff' fill-opacity='0.69'/%3E%3Ccircle cx='746.1' cy='251.4' r='0.8' fill='%23ffffff' fill-opacity='0.49'/%3E%3Ccircle cx='762.6' cy='377.5' r='0.6' fill='%23ffefcf' fill-opacity='0.30'/%3E%3Ccircle cx='504.2' cy='472.6' r='1.1' fill='%23ffffff' fill-opacity='0.54'/%3E%3Ccircle cx='113.3' cy='225.8' r='1.4' fill='%23d6e4ff' fill-opacity='0.47'/%3E%3Ccircle cx='404.8' cy='519.5' r='0.5' fill='%23ffefcf' fill-opacity='0.75'/%3E%3Ccircle cx='326.5' cy='189.1' r='0.8' fill='%23d6e4ff' fill-opacity='0.63'/%3E%3Ccircle cx='66' cy='50.5' r='0.7' fill='%23ffffff' fill-opacity='0.56'/%3E%3Ccircle cx='58.2' cy='378.8' r='1.1' fill='%23d6e4ff' fill-opacity='0.63'/%3E%3Ccircle cx='273.2' cy='208.3' r='1.1' fill='%23d6e4ff' fill-opacity='0.48'/%3E%3Ccircle cx='341.2' cy='329.9' r='0.8' fill='%23ffefcf' fill-opacity='0.29'/%3E%3Ccircle cx='124.2' cy='133.7' r='0.8' fill='%23d6e4ff' fill-opacity='0.85'/%3E%3Ccircle cx='77.4' cy='242.6' r='0.9' fill='%23ffffff' fill-opacity='0.43'/%3E%3Ccircle cx='786.5' cy='466.6' r='0.7' fill='%23ffefcf' fill-opacity='0.71'/%3E%3Ccircle cx='655.4' cy='205.4' r='0.6' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='145.2' cy='355.6' r='0.5' fill='%23ffffff' fill-opacity='0.57'/%3E%3Ccircle cx='252.2' cy='2.2' r='0.8' fill='%23ffefcf' fill-opacity='0.60'/%3E%3Ccircle cx='915' cy='372.9' r='0.9' fill='%23ffffff' fill-opacity='0.87'/%3E%3Ccircle cx='438.4' cy='470.3' r='1.4' fill='%23d6e4ff' fill-opacity='0.69'/%3E%3Ccircle cx='382.1' cy='212.8' r='0.8' fill='%23ffffff' fill-opacity='0.66'/%3E%3Ccircle cx='183' cy='531.7' r='0.8' fill='%23ffefcf' fill-opacity='0.36'/%3E%3Ccircle cx='576.7' cy='55.3' r='0.9' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='911' cy='331.4' r='0.5' fill='%23d6e4ff' fill-opacity='0.82'/%3E%3Ccircle cx='142.6' cy='136.2' r='0.7' fill='%23d6e4ff' fill-opacity='0.64'/%3E%3Ccircle cx='117.9' cy='458.4' r='0.8' fill='%23ffefcf' fill-opacity='0.56'/%3E%3Ccircle cx='82.4' cy='55.2' r='0.7' fill='%23d6e4ff' fill-opacity='0.73'/%3E%3Ccircle cx='795.7' cy='87.2' r='0.5' fill='%23ffefcf' fill-opacity='0.38'/%3E%3Ccircle cx='140.7' cy='293.3' r='0.5' fill='%23ffefcf' fill-opacity='0.74'/%3E%3Ccircle cx='939.4' cy='466.2' r='1.1' fill='%23ffefcf' fill-opacity='0.80'/%3E%3Ccircle cx='871.9' cy='192.1' r='0.6' fill='%23ffefcf' fill-opacity='0.60'/%3E%3Ccircle cx='611' cy='331.1' r='1.4' fill='%23ffffff' fill-opacity='0.89'/%3E%3Ccircle cx='773.8' cy='441.9' r='1.1' fill='%23ffffff' fill-opacity='0.77'/%3E%3Ccircle cx='496.9' cy='192' r='0.5' fill='%23ffefcf' fill-opacity='0.89'/%3E%3Ccircle cx='453.4' cy='104.6' r='0.9' fill='%23d6e4ff' fill-opacity='0.87'/%3E%3Ccircle cx='776.2' cy='390.5' r='0.7' fill='%23ffefcf' fill-opacity='0.87'/%3E%3Ccircle cx='77.3' cy='55.2' r='0.8' fill='%23ffffff' fill-opacity='0.38'/%3E%3Ccircle cx='463.3' cy='532' r='0.9' fill='%23d6e4ff' fill-opacity='0.80'/%3E%3Ccircle cx='872.8' cy='185.8' r='1.1' fill='%23ffffff' fill-opacity='0.31'/%3E%3Ccircle cx='873.4' cy='422.4' r='1.4' fill='%23ffffff' fill-opacity='0.38'/%3E%3Ccircle cx='416.6' cy='343.4' r='0.5' fill='%23d6e4ff' fill-opacity='0.77'/%3E%3Ccircle cx='444.6' cy='401.4' r='0.5' fill='%23ffffff' fill-opacity='0.72'/%3E%3Ccircle cx='953.4' cy='14.9' r='0.9' fill='%23ffffff' fill-opacity='0.84'/%3E%3Ccircle cx='587.1' cy='321.8' r='0.8' fill='%23ffefcf' fill-opacity='0.68'/%3E%3Ccircle cx='149.7' cy='296.1' r='0.5' fill='%23ffffff' fill-opacity='0.26'/%3E%3Ccircle cx='505.5' cy='504.2' r='0.8' fill='%23ffffff' fill-opacity='0.89'/%3E%3Ccircle cx='793.1' cy='114' r='0.7' fill='%23ffffff' fill-opacity='0.39'/%3E%3Ccircle cx='733.1' cy='176' r='0.9' fill='%23ffffff' fill-opacity='0.52'/%3E%3Ccircle cx='58.5' cy='399.6' r='0.8' fill='%23d6e4ff' fill-opacity='0.68'/%3E%3Ccircle cx='794.1' cy='474.2' r='0.6' fill='%23ffffff' fill-opacity='0.60'/%3E%3Ccircle cx='837.9' cy='419.3' r='0.9' fill='%23ffffff' fill-opacity='0.25'/%3E%3Ccircle cx='165.5' cy='255.7' r='1.1' fill='%23ffffff' fill-opacity='0.33'/%3E%3Ccircle cx='312.9' cy='279.9' r='0.9' fill='%23ffffff' fill-opacity='0.56'/%3E%3Ccircle cx='847.9' cy='30.7' r='0.6' fill='%23ffffff' fill-opacity='0.43'/%3E%3Ccircle cx='487.4' cy='303.3' r='1.4' fill='%23ffffff' fill-opacity='0.83'/%3E%3Ccircle cx='425.5' cy='330.8' r='0.9' fill='%23ffffff' fill-opacity='0.64'/%3E%3Ccircle cx='665' cy='244.3' r='0.9' fill='%23ffffff' fill-opacity='0.77'/%3E%3Ccircle cx='671.2' cy='473.3' r='0.7' fill='%23ffffff' fill-opacity='0.85'/%3E%3Ccircle cx='806.4' cy='74.1' r='0.5' fill='%23ffefcf' fill-opacity='0.51'/%3E%3Ccircle cx='69.6' cy='129.9' r='0.5' fill='%23ffefcf' fill-opacity='0.39'/%3E%3Ccircle cx='752.6' cy='484.4' r='0.6' fill='%23ffefcf' fill-opacity='0.86'/%3E%3Ccircle cx='137.3' cy='476.7' r='0.8' fill='%23ffffff' fill-opacity='0.39'/%3E%3Ccircle cx='382.3' cy='263.1' r='1.1' fill='%23ffffff' fill-opacity='0.79'/%3E%3Ccircle cx='678.1' cy='536.8' r='0.8' fill='%23ffffff' fill-opacity='0.47'/%3E%3Ccircle cx='342.4' cy='49.8' r='0.7' fill='%23d6e4ff' fill-opacity='0.26'/%3E%3Ccircle cx='422.8' cy='9.8' r='0.7' fill='%23ffefcf' fill-opacity='0.59'/%3E%3Ccircle cx='491.8' cy='34.7' r='1.4' fill='%23ffffff' fill-opacity='0.40'/%3E%3Ccircle cx='80.7' cy='146.8' r='1.4' fill='%23ffffff' fill-opacity='0.37'/%3E%3Ccircle cx='787' cy='458.8' r='1.1' fill='%23ffefcf' fill-opacity='0.78'/%3E%3Ccircle cx='389.7' cy='289.8' r='0.9' fill='%23ffefcf' fill-opacity='0.62'/%3E%3Ccircle cx='85.9' cy='31.1' r='1.1' fill='%23ffffff' fill-opacity='0.37'/%3E%3Ccircle cx='258.2' cy='9.1' r='0.5' fill='%23ffffff' fill-opacity='0.77'/%3E%3Ccircle cx='583.9' cy='120.1' r='0.7' fill='%23d6e4ff' fill-opacity='0.81'/%3E%3Ccircle cx='11.1' cy='536.9' r='0.8' fill='%23ffefcf' fill-opacity='0.85'/%3E%3Ccircle cx='596.8' cy='23.3' r='1.1' fill='%23ffffff' fill-opacity='0.40'/%3E%3Ccircle cx='930.4' cy='141.4' r='0.6' fill='%23ffefcf' fill-opacity='0.38'/%3E%3Ccircle cx='603.5' cy='286.8' r='0.6' fill='%23ffffff' fill-opacity='0.44'/%3E%3Ccircle cx='259.7' cy='434' r='0.7' fill='%23ffffff' fill-opacity='0.27'/%3E%3Ccircle cx='703.8' cy='297.6' r='0.6' fill='%23ffffff' fill-opacity='0.58'/%3E%3Ccircle cx='897.3' cy='57.4' r='1.4' fill='%23d6e4ff' fill-opacity='0.67'/%3E%3Ccircle cx='524.1' cy='479.9' r='0.9' fill='%23ffffff' fill-opacity='0.45'/%3E%3Ccircle cx='943.1' cy='185.1' r='1.4' fill='%23ffffff' fill-opacity='0.82'/%3E%3Ccircle cx='388.5' cy='187.7' r='0.5' fill='%23ffffff' fill-opacity='0.79'/%3E%3Ccircle cx='67.9' cy='400.1' r='0.7' fill='%23ffffff' fill-opacity='0.53'/%3E%3Ccircle cx='81.1' cy='454.3' r='1.4' fill='%23ffefcf' fill-opacity='0.58'/%3E%3Ccircle cx='574.8' cy='374.1' r='0.5' fill='%23ffffff' fill-opacity='0.55'/%3E%3Ccircle cx='258.3' cy='2' r='0.7' fill='%23ffefcf' fill-opacity='0.88'/%3E%3Ccircle cx='234.7' cy='521.5' r='0.7' fill='%23ffffff' fill-opacity='0.39'/%3E%3Ccircle cx='1' cy='206.1' r='0.8' fill='%23ffffff' fill-opacity='0.43'/%3E%3Ccircle cx='238.3' cy='419.2' r='0.5' fill='%23ffffff' fill-opacity='0.42'/%3E%3Ccircle cx='138.1' cy='316.9' r='0.8' fill='%23ffefcf' fill-opacity='0.26'/%3E%3Ccircle cx='604.5' cy='45.6' r='0.9' fill='%23ffffff' fill-opacity='0.80'/%3E%3Ccircle cx='631.2' cy='386.6' r='0.9' fill='%23ffefcf' fill-opacity='0.50'/%3E%3Ccircle cx='691.9' cy='266.9' r='0.7' fill='%23ffffff' fill-opacity='0.72'/%3E%3Ccircle cx='42' cy='451.1' r='0.9' fill='%23ffffff' fill-opacity='0.66'/%3E%3Ccircle cx='873.5' cy='406.5' r='0.9' fill='%23ffffff' fill-opacity='0.79'/%3E%3Ccircle cx='793.4' cy='315.4' r='1.1' fill='%23ffffff' fill-opacity='0.69'/%3E%3Ccircle cx='81.7' cy='22.6' r='1.1' fill='%23ffffff' fill-opacity='0.48'/%3E%3Ccircle cx='361.6' cy='243.7' r='0.5' fill='%23ffffff' fill-opacity='0.66'/%3E%3Ccircle cx='469.7' cy='1.8' r='1.4' fill='%23ffffff' fill-opacity='0.30'/%3E%3Ccircle cx='632.9' cy='35.7' r='1.1' fill='%23ffffff' fill-opacity='0.56'/%3E%3Ccircle cx='812.3' cy='126.8' r='1.4' fill='%23d6e4ff' fill-opacity='0.38'/%3E%3Ccircle cx='474.2' cy='206.6' r='0.8' fill='%23ffefcf' fill-opacity='0.84'/%3E%3Ccircle cx='736.3' cy='333.2' r='1.1' fill='%23ffffff' fill-opacity='0.38'/%3E%3Ccircle cx='318.5' cy='351.8' r='1.1' fill='%23ffffff' fill-opacity='0.45'/%3E%3Ccircle cx='12' cy='32.8' r='0.7' fill='%23ffffff' fill-opacity='0.88'/%3E%3Ccircle cx='664.5' cy='364.9' r='0.7' fill='%23ffefcf' fill-opacity='0.71'/%3E%3Ccircle cx='446.1' cy='251.8' r='0.5' fill='%23ffffff' fill-opacity='0.90'/%3E%3Ccircle cx='299.2' cy='46.4' r='0.8' fill='%23d6e4ff' fill-opacity='0.26'/%3E%3Ccircle cx='73.4' cy='273.6' r='0.8' fill='%23d6e4ff' fill-opacity='0.90'/%3E%3Ccircle cx='201.4' cy='510.6' r='0.6' fill='%23ffffff' fill-opacity='0.30'/%3E%3Ccircle cx='136.1' cy='283' r='0.7' fill='%23ffefcf' fill-opacity='0.34'/%3E%3Ccircle cx='851.4' cy='379.8' r='0.6' fill='%23d6e4ff' fill-opacity='0.57'/%3E%3Ccircle cx='378.3' cy='85.9' r='0.8' fill='%23d6e4ff' fill-opacity='0.69'/%3E%3Ccircle cx='289.9' cy='76' r='0.7' fill='%23ffffff' fill-opacity='0.49'/%3E%3Ccircle cx='806.6' cy='.9' r='1.4' fill='%23d6e4ff' fill-opacity='0.47'/%3E%3Ccircle cx='115.2' cy='500.3' r='1.1' fill='%23ffefcf' fill-opacity='0.26'/%3E%3Ccircle cx='243.1' cy='35.1' r='0.8' fill='%23ffffff' fill-opacity='0.90'/%3E%3Ccircle cx='346.3' cy='231.1' r='0.7' fill='%23ffefcf' fill-opacity='0.81'/%3E%3Ccircle cx='97.6' cy='450.7' r='0.7' fill='%23ffffff' fill-opacity='0.66'/%3E%3Ccircle cx='239.4' cy='143.5' r='0.9' fill='%23ffefcf' fill-opacity='0.46'/%3E%3Ccircle cx='753.7' cy='231' r='0.5' fill='%23d6e4ff' fill-opacity='0.78'/%3E%3Ccircle cx='876.9' cy='508' r='0.9' fill='%23ffffff' fill-opacity='0.38'/%3E%3Ccircle cx='47.5' cy='395.5' r='0.8' fill='%23ffffff' fill-opacity='0.65'/%3E%3Ccircle cx='618.7' cy='154.6' r='0.5' fill='%23ffffff' fill-opacity='0.84'/%3E%3Ccircle cx='163.9' cy='224' r='0.7' fill='%23ffefcf' fill-opacity='0.44'/%3E%3Ccircle cx='390' cy='128.9' r='0.8' fill='%23d6e4ff' fill-opacity='0.61'/%3E%3Ccircle cx='115' cy='347.3' r='0.5' fill='%23d6e4ff' fill-opacity='0.39'/%3E%3Ccircle cx='528.4' cy='244.6' r='0.7' fill='%23d6e4ff' fill-opacity='0.90'/%3E%3Ccircle cx='410.3' cy='295.8' r='0.6' fill='%23ffefcf' fill-opacity='0.31'/%3E%3Ccircle cx='533.6' cy='172.4' r='0.7' fill='%23ffffff' fill-opacity='0.42'/%3E%3Ccircle cx='851.8' cy='404.8' r='0.8' fill='%23ffffff' fill-opacity='0.50'/%3E%3Ccircle cx='361.8' cy='182.6' r='0.5' fill='%23ffefcf' fill-opacity='0.57'/%3E%3Ccircle cx='120.8' cy='271.8' r='1.1' fill='%23ffffff' fill-opacity='0.76'/%3E%3Ccircle cx='88.9' cy='484.3' r='0.8' fill='%23d6e4ff' fill-opacity='0.51'/%3E%3Ccircle cx='414.6' cy='168.5' r='1.4' fill='%23ffffff' fill-opacity='0.82'/%3E%3Ccircle cx='122.2' cy='229.6' r='1.4' fill='%23d6e4ff' fill-opacity='0.83'/%3E%3Ccircle cx='929.6' cy='264.5' r='0.5' fill='%23d6e4ff' fill-opacity='0.50'/%3E%3Ccircle cx='933.4' cy='134.2' r='0.5' fill='%23ffffff' fill-opacity='0.40'/%3E%3Ccircle cx='501.5' cy='368.3' r='1.4' fill='%23d6e4ff' fill-opacity='0.72'/%3E%3Ccircle cx='81.6' cy='419.5' r='0.5' fill='%23ffffff' fill-opacity='0.76'/%3E%3Ccircle cx='546.6' cy='20.3' r='1.1' fill='%23ffffff' fill-opacity='0.45'/%3E%3Ccircle cx='601.4' cy='285.3' r='0.8' fill='%23ffffff' fill-opacity='0.70'/%3E%3Ccircle cx='95.5' cy='162.2' r='0.9' fill='%23ffefcf' fill-opacity='0.37'/%3E%3C/svg%3E");
+  --rg-crater: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 224 18' width='224' height='18'%3E%3Cpath d='M0 10.5C14 9.6 26 11.2 40 10.2S66 9.4 80 10.4L92 10.2C99 9.6 103 5.2 108 4.4C112 4 115 8 118 13.4C121 15.6 126 15.8 129 14.2L134 9.6L139 14.2C142 15.8 147 15.6 150 13.4C153 8 156 4 160 4.4C165 5.2 169 9.6 176 10.2L188 10.6C200 9.8 212 11 224 10.4V18H0Z' fill='%23e2d6c1'/%3E%3Cpath d='M0 16.2H224' stroke='%23d9541e' stroke-width='1.2' stroke-opacity='.9'/%3E%3Cpath d='M0 10.5C14 9.6 26 11.2 40 10.2S66 9.4 80 10.4L92 10.2C99 9.6 103 5.2 108 4.4C112 4 115 8 118 13.4C121 15.6 126 15.8 129 14.2L134 9.6L139 14.2C142 15.8 147 15.6 150 13.4C153 8 156 4 160 4.4C165 5.2 169 9.6 176 10.2L188 10.6C200 9.8 212 11 224 10.4' fill='none' stroke='%231d1a2b' stroke-width='1.7' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --rg-crater-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 224 18' width='224' height='18'%3E%3Cpath d='M0 10.5C14 9.6 26 11.2 40 10.2S66 9.4 80 10.4L92 10.2C99 9.6 103 5.2 108 4.4C112 4 115 8 118 13.4C121 15.6 126 15.8 129 14.2L134 9.6L139 14.2C142 15.8 147 15.6 150 13.4C153 8 156 4 160 4.4C165 5.2 169 9.6 176 10.2L188 10.6C200 9.8 212 11 224 10.4V18H0Z' fill='%23000' fill-opacity='.3'/%3E%3Cpath d='M0 16.2H224' stroke='%23000' stroke-width='1.2' stroke-opacity='.9'/%3E%3Cpath d='M0 10.5C14 9.6 26 11.2 40 10.2S66 9.4 80 10.4L92 10.2C99 9.6 103 5.2 108 4.4C112 4 115 8 118 13.4C121 15.6 126 15.8 129 14.2L134 9.6L139 14.2C142 15.8 147 15.6 150 13.4C153 8 156 4 160 4.4C165 5.2 169 9.6 176 10.2L188 10.6C200 9.8 212 11 224 10.4' fill='none' stroke='%23000' stroke-width='1.7' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --rg-orbit: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' width='20' height='20'%3E%3Cellipse cx='10' cy='10' rx='9' ry='3.6' transform='rotate(-24 10 10)' fill='none' stroke='%231d1a2b' stroke-width='1.3'/%3E%3Ccircle cx='10' cy='10' r='4.6' fill='%23d9541e'/%3E%3Cpath d='M5.6 8.6A9 3.6 -24 0 0 14.6 9.2' transform='rotate(-24 10 10)' fill='none' stroke='%231d1a2b' stroke-width='0' /%3E%3Ccircle cx='17.2' cy='6.6' r='1.6' fill='%231d1a2b'/%3E%3C/svg%3E");
+  --rg-target: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 14' width='22' height='14'%3E%3Cellipse cx='11' cy='7' rx='10' ry='5.6' fill='none' stroke='%236c6779' stroke-width='1.2' stroke-dasharray='2.2 1.8'/%3E%3Ccircle cx='11' cy='7' r='2.1' fill='%23d9541e'/%3E%3C/svg%3E");
+  --rg-scrim: linear-gradient(90deg, rgba(13, 12, 23, 0.94) 0%, rgba(13, 12, 23, 0.72) 40%, rgba(13, 12, 23, 0) 56%);
+  --rg-strata: linear-gradient(90deg, #9cc7e4 0 18%, #7a6a5e 18% 36%, #c4763a 36% 60%, #e3a72f 60% 82%, #f3d27a 82%);
+  --rg-sphere: radial-gradient(circle at 34% 30%, #f8b98a 0, #d9541e 46%, #7d2b0c 100%);
+}
+
+/* The inks; on a slide with a background of its own, its text color */
+.deck-theme-regolith.px-slide,
+.deck-theme-regolith .px-slide { --rg-ink: #1d1a2b; --rg-on-ink: #f4f1eb; --rg-bg: #f4f1eb; --rg-text: #34303f; --rg-muted: #6c6779; --rg-pale: #b3adbb; --rg-rule: #ddd6cb; --rg-card: #fffdf9; --rg-wash: #eae4d8; --rg-lava: #d9541e; --rg-lava-text: #b8431a; --rg-sulfur: #e3a72f; --rg-ice: #2a6f97; }
+.deck-theme-regolith.px-slide[data-own-background],
+.deck-theme-regolith .px-slide[data-own-background] { --rg-ink: var(--px-text); --rg-on-ink: var(--px-bg, #ffffff); --rg-bg: var(--px-bg, #ffffff); --rg-text: var(--px-text); --rg-muted: var(--px-text); --rg-pale: var(--px-text); --rg-rule: var(--px-text); --rg-card: transparent; --rg-wash: transparent; --rg-lava: var(--px-text); --rg-lava-text: var(--px-text); --rg-sulfur: var(--px-text); --rg-ice: var(--px-text); }
+/* The title and section slides are space */
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]),
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) { --rg-ink: #f6f1e6; --rg-on-ink: #0d0c17; --rg-bg: #0d0c17; --rg-text: #e2dccf; --rg-muted: #b2aabb; --rg-pale: #5c566a; --rg-rule: rgba(178, 170, 187, 0.3); --rg-card: #17152a; --rg-wash: #221f36; --rg-lava: #ff7a45; --rg-lava-text: #ff8c5a; --rg-sulfur: #f3c25a; --rg-ice: #8cc4e8; }
+
+/* Headings: Space Grotesk, set a little tight */
+.deck-theme-regolith .px-text :is(h1, h2, h3) { letter-spacing: -0.012em !important; line-height: 1.04; }
+.deck-theme-regolith .px-text :is(h1, h2, h3) em { color: var(--rg-lava-text); font-style: normal; }
+
+/* Slide titles: a crater in profile under them, the ground's section
+   filled in. Not on the title slide, section slides, Big Numbers or blank
+   ones. */
+.deck-theme-regolith.px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after,
+.deck-theme-regolith .px-slide:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  content: "";
+  display: block;
+  width: 224px;
+  height: 18px;
+  margin-top: 0.18em;
+  background: var(--rg-crater) 0 0 / 224px 18px no-repeat;
+}
+.deck-theme-regolith .px-text :is(h1, h2)[style*=center]:last-child::after { margin-inline: auto; }
+.deck-theme-regolith .px-text :is(h1, h2)[style*=right]:last-child::after { margin-left: auto; }
+.deck-theme-regolith.px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after,
+.deck-theme-regolith .px-slide[data-own-background]:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  background: currentColor;
+  -webkit-mask: var(--rg-crater-mask) 0 0 / 224px 18px no-repeat;
+  mask: var(--rg-crater-mask) 0 0 / 224px 18px no-repeat;
+}
+/* Presented, the profile is surveyed left to right as the slide opens */
+.deck-theme-regolith.reveal:not(.overview) .slides section.px-slide.present:not([data-layout=title], [data-layout=section-header], [data-layout=big-number], [data-layout=blank]) [data-placeholder=title] :is(h1, h2):last-child::after {
+  animation: regolith-survey 1.2s cubic-bezier(0.3, 0.6, 0.3, 1) 0.15s both;
+}
+@keyframes regolith-survey {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+/* The title slide: the planet cut away, darker behind the words at the
+   left; a band of the strata under the title. (Widths in percent, so text
+   that shrinks to fit still gets its room.) */
+.deck-theme-regolith.px-slide[data-layout=title]:not([data-own-background])::before,
+.deck-theme-regolith .px-slide[data-layout=title]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--rg-scrim), var(--rg-planet-still) 0 0 / 960px 540px no-repeat, var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17;
+}
+/* Presented, the inside of the wedge moves: the ::before is the planet at
+   rest, and the ::after, over the wedge, in its own small compositing
+   layer (will-change), is the mantle's turning cells, the plume and the
+   inner core's glow. A frame repaints only that box. */
+.deck-theme-regolith.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--rg-scrim), var(--rg-planet-base) 0 0 / 960px 540px no-repeat, var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+.deck-theme-regolith.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  left: 500px;
+  top: 100px;
+  width: 244px;
+  height: 316px;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--rg-planet) 0 0 / 244px 316px no-repeat;
+  will-change: transform;
+}
+.deck-theme-regolith.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-regolith .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  max-width: 54%;
+  text-align: left !important;
+  letter-spacing: -0.02em !important;
+  line-height: 0.98;
+}
+.deck-theme-regolith.px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after,
+.deck-theme-regolith .px-slide[data-layout=title] [data-placeholder=title] :is(h1, h2)::after {
+  content: "";
+  display: block;
+  width: 108px;
+  height: 6px;
+  margin: 0.24em 0 0;
+  background: var(--rg-strata);
+}
+.deck-theme-regolith.px-slide[data-layout=title][data-own-background] [data-placeholder=title] :is(h1, h2)[style*=center]::after,
+.deck-theme-regolith .px-slide[data-layout=title][data-own-background] [data-placeholder=title] :is(h1, h2)[style*=center]::after { margin-inline: auto; }
+.deck-theme-regolith.px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6),
+.deck-theme-regolith .px-slide[data-layout=title]:not([data-own-background]) [data-placeholder=subtitle] :is(p, li, h1, h2, h3, h4, h5, h6) { max-width: 54%; text-align: left !important; }
+/* The lines after the subtitle's first: a mission line, in sulfur capitals */
+.deck-theme-regolith.px-slide[data-layout=title] [data-placeholder=subtitle] p + p,
+.deck-theme-regolith .px-slide[data-layout=title] [data-placeholder=subtitle] p + p {
+  margin-top: 0.75em !important;
+  color: var(--rg-sulfur) !important;
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 0.54em;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Section slides: a planet's limb from orbit, a probe under its
+   parachute; the title under a band of the strata */
+.deck-theme-regolith.px-slide[data-layout=section-header]:not([data-own-background])::before,
+.deck-theme-regolith .px-slide[data-layout=section-header]:not([data-own-background])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--rg-limb-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 640px 280px at 50% 44%, #1a1730, rgba(13, 12, 23, 0) 72%), var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17;
+}
+/* Presented, the limb is the ::before, and the probe the ::after, in its
+   own small layer: as the slide opens it comes down on its parachute (a
+   transform, which the compositor draws without repainting), and stays */
+.deck-theme-regolith.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--rg-limb) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 640px 280px at 50% 44%, #1a1730, rgba(13, 12, 23, 0) 72%), var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+.deck-theme-regolith.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::after {
+  content: "";
+  position: absolute;
+  left: 812px;
+  top: 52px;
+  width: 96px;
+  height: 136px;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--rg-probe) 0 0 / 96px 136px no-repeat;
+  transform-origin: 50% 0;
+  will-change: transform;
+}
+.deck-theme-regolith.reveal:not(.overview) .slides section.px-slide.present[data-layout=section-header]:not([data-own-background])::after { animation: regolith-descend 8s cubic-bezier(0.16, 0.6, 0.3, 1) both; }
+@keyframes regolith-descend {
+  0% { transform: translateY(-230px) rotate(-5deg); }
+  35% { transform: translateY(-70px) rotate(3deg); }
+  65% { transform: translateY(-14px) rotate(-1.5deg); }
+  100% { transform: none; }
+}
+.deck-theme-regolith.px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-regolith .px-slide[data-layout=section-header]:not([data-own-background]) [data-placeholder=title] :is(h1, h2) {
+  letter-spacing: -0.02em !important;
+  line-height: 1;
+}
+.deck-theme-regolith.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before,
+.deck-theme-regolith .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)::before {
+  content: "";
+  display: block;
+  width: 84px;
+  height: 6px;
+  margin: 0 auto 0.34em;
+  background: var(--rg-strata);
+}
+.deck-theme-regolith .px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before,
+.deck-theme-regolith.px-slide[data-layout=section-header] [data-placeholder=title] :is(h1, h2)[style*=left]::before { margin-left: 0; }
+
+/* Still for those who'd rather, on paper, and in reveal's overview: the
+   one drawing, at rest, in the ::before */
+.deck-theme-regolith.reveal.overview .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--rg-scrim), var(--rg-planet-still) 0 0 / 960px 540px no-repeat, var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+.deck-theme-regolith.reveal.overview .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--rg-limb-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 640px 280px at 50% 44%, #1a1730, rgba(13, 12, 23, 0) 72%), var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+.deck-theme-regolith.reveal.overview .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::after { content: none; }
+/* (reveal.js hides slides' ::before in its overview, with !important) */
+.deck-theme-regolith.reveal.overview .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::before { display: block !important; }
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-regolith.reveal .slides section.px-slide[data-layout=title]:not([data-own-background])::before { background: var(--rg-scrim), var(--rg-planet-still) 0 0 / 960px 540px no-repeat, var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+  .deck-theme-regolith.reveal .slides section.px-slide[data-layout=section-header]:not([data-own-background])::before { background: var(--rg-limb-still) 0 0 / 960px 540px no-repeat, radial-gradient(ellipse 640px 280px at 50% 44%, #1a1730, rgba(13, 12, 23, 0) 72%), var(--rg-stars) 0 0 / 960px 540px no-repeat, #0d0c17; }
+  .deck-theme-regolith.reveal .slides section.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background])::after { content: none; }
+  .deck-theme-regolith.reveal .slides section.px-slide [data-placeholder=title] :is(h1, h2),
+  .deck-theme-regolith.reveal .slides section.px-slide [data-placeholder=title] :is(h1, h2)::before,
+  .deck-theme-regolith.reveal .slides section.px-slide [data-placeholder=title] :is(h1, h2)::after { animation: none !important; }
+}
+
+/* Text on the space slides (the editor's text boxes set their own color,
+   so the rule reaches their divs too) */
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text,
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6),
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text :is(div, p, li, h1, h2, h3, h5, h6) { color: #e2dccf !important; }
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2),
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=title] :is(h1, h2) { color: #f6f1e6 !important; }
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li),
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) [data-placeholder=subtitle] :is(p, li) { color: #bdb5c6 !important; }
+.deck-theme-regolith.px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a,
+.deck-theme-regolith .px-slide:is([data-layout=title], [data-layout=section-header]):not([data-own-background]) .px-text a { color: #8cc4e8 !important; }
+
+/* Subtitles: muted */
+.deck-theme-regolith [data-placeholder=subtitle] :is(p, li) { color: var(--rg-muted) !important; }
+
+/* Body text: room between lines and items, bold words in ink */
+.deck-theme-regolith .px-text :is(p, li) { line-height: 1.36; }
+.deck-theme-regolith .px-text strong { color: var(--rg-ink); font-weight: 600; }
+
+/* A Heading 4: a label in lava capitals after a planet and its orbit */
+.deck-theme-regolith .px-text h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin: 0 0 0.55em !important;
+  color: var(--rg-lava-text) !important;
+  font-family: 'Space Mono', ui-monospace, monospace !important;
+  font-size: 0.5em;
+  font-weight: 700 !important;
+  letter-spacing: 0.16em !important;
+  line-height: 1.35;
+  text-transform: uppercase !important;
+}
+.deck-theme-regolith .px-text h4::before {
+  content: "";
+  flex: none;
+  width: 1.5em;
+  height: 1.5em;
+  background: var(--rg-orbit) 0 0 / 100% 100% no-repeat;
+}
+.deck-theme-regolith.px-slide[data-own-background] .px-text h4::before,
+.deck-theme-regolith .px-slide[data-own-background] .px-text h4::before { background: currentColor; -webkit-mask: var(--rg-orbit) 0 0 / 100% 100% no-repeat; mask: var(--rg-orbit) 0 0 / 100% 100% no-repeat; }
+.deck-theme-regolith .px-text h4[style*=center] { justify-content: center; }
+.deck-theme-regolith .px-text h4[style*=right] { justify-content: flex-end; }
+
+/* A Heading 6: a field label, after a landing ellipse */
+.deck-theme-regolith .px-text h6 {
+  margin: 0.1em 0 0.4em !important;
+  color: var(--rg-muted) !important;
+  font-family: 'Space Mono', ui-monospace, monospace !important;
+  font-size: 0.5em;
+  font-weight: 400 !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.4;
+  text-transform: uppercase !important;
+}
+.deck-theme-regolith .px-text h6::before {
+  content: "";
+  display: inline-block;
+  width: 1.7em;
+  height: 1.08em;
+  margin-right: 0.6em;
+  vertical-align: -0.2em;
+  background: var(--rg-target) 0 0 / 100% 100% no-repeat;
+}
+
+/* Bullets: lit planets; then orbits; then a dash */
+.deck-theme-regolith .px-text :is(ul, ol) { display: block; }
+.deck-theme-regolith .px-text ul { list-style: none; padding-left: 1.05em; }
+.deck-theme-regolith .px-text :is(ul, ol) > li { position: relative; }
+.deck-theme-regolith .px-text :is(ul, ol) > li + li { margin-top: 0.4em; }
+.deck-theme-regolith .px-text ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.98em;
+  top: 0.44em;
+  width: 0.46em;
+  height: 0.46em;
+  border-radius: 50%;
+  background: var(--rg-sphere);
+}
+.deck-theme-regolith .px-text ul ul > li::before {
+  top: 0.5em;
+  width: 0.36em;
+  height: 0.36em;
+  box-sizing: border-box;
+  border: 0.07em solid var(--rg-lava);
+  background: radial-gradient(circle, var(--rg-lava) 0 0.05em, transparent 0.06em);
+}
+.deck-theme-regolith .px-text ul ul ul > li::before { top: 0.66em; width: 0.46em; height: 0; border: 0; border-radius: 0; border-top: 0.07em solid var(--rg-muted); background: none; }
+.deck-theme-regolith.px-slide[data-own-background] .px-text ul > li::before,
+.deck-theme-regolith .px-slide[data-own-background] .px-text ul > li::before { background: currentColor; }
+
+/* Numbered lists: a stratigraphic column, each item a layer deeper (sky,
+   crust, mantle, outer core, inner core, then round again), numbered in
+   Space Mono to its left */
+.deck-theme-regolith .px-text ol { list-style: none; padding-left: 2.3em; }
+.deck-theme-regolith .px-text ol > li { list-style: none; --rg-layer: #9cc7e4; }
+.deck-theme-regolith .px-text ol > li:nth-child(5n + 2) { --rg-layer: #7a6a5e; }
+.deck-theme-regolith .px-text ol > li:nth-child(5n + 3) { --rg-layer: #c4763a; }
+.deck-theme-regolith .px-text ol > li:nth-child(5n + 4) { --rg-layer: #e3a72f; }
+.deck-theme-regolith .px-text ol > li:nth-child(5n + 5) { --rg-layer: #f3d27a; }
+.deck-theme-regolith.px-slide[data-own-background] .px-text ol > li,
+.deck-theme-regolith .px-slide[data-own-background] .px-text ol > li { --rg-layer: currentColor; }
+.deck-theme-regolith .px-text ol > li::before {
+  content: counter(list-item, decimal-leading-zero);
+  position: absolute;
+  left: -3.7em;
+  top: 0.3em;
+  width: 2.4em;
+  color: var(--rg-ink);
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 0.62em;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-regolith .px-text ol > li::after {
+  content: "";
+  position: absolute;
+  left: -0.78em;
+  top: -0.2em;
+  bottom: -0.2em;
+  width: 0.28em;
+  background: var(--rg-layer);
+}
+.deck-theme-regolith .px-text ol > li:first-child::after { top: 0.1em; }
+.deck-theme-regolith .px-text ol > li:last-child::after { bottom: 0.06em; }
+.deck-theme-regolith .px-text ol ol > li::after { width: 0.18em; }
+
+/* Links and citation numbers: ice blue */
+.deck-theme-regolith .px-text a { color: var(--rg-ice) !important; text-decoration-thickness: 0.05em; text-underline-offset: 0.16em; }
+.deck-theme-regolith .px-text sup[data-cite] { color: var(--rg-ice) !important; }
+
+/* Inline code: a measured value, on a dust label */
+.deck-theme-regolith .px-text :not(pre) > code {
+  padding: 0.05em 0.34em 0.08em;
+  border-radius: 3px;
+  background: var(--rg-wash) !important;
+  color: var(--rg-ink);
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 0.8em;
+}
+.deck-theme-regolith.px-slide[data-own-background] .px-text :not(pre) > code,
+.deck-theme-regolith .px-slide[data-own-background] .px-text :not(pre) > code { background: transparent !important; color: var(--px-text); outline: 0.06em solid var(--px-text); }
+
+/* Quotes: a field note, a card under a band of the strata; bold first
+   words are its label */
+.deck-theme-regolith .px-text blockquote {
+  margin: 0.5em 0 0.6em !important;
+  padding: 0.8em 0.95em 0.7em !important;
+  border: 1px solid var(--rg-rule) !important;
+  border-radius: 0 0 4px 4px !important;
+  background: var(--rg-strata) 0 0 / 100% 0.2em no-repeat, var(--rg-card) !important;
+  box-shadow: 0 0.06em 0.2em rgba(29, 26, 43, 0.06) !important;
+  opacity: 1 !important;
+  color: var(--rg-ink);
+  font-style: normal;
+}
+.deck-theme-regolith .px-text blockquote :is(p, li) { color: var(--rg-ink) !important; line-height: 1.38; }
+.deck-theme-regolith .px-text blockquote > p:first-child > strong:first-child {
+  display: block;
+  margin-bottom: 0.32em;
+  color: var(--rg-lava-text);
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 0.56em;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.deck-theme-regolith .px-text blockquote > :last-child { margin-bottom: 0 !important; }
+.deck-theme-regolith.px-slide[data-own-background] .px-text blockquote,
+.deck-theme-regolith .px-slide[data-own-background] .px-text blockquote { background: transparent !important; border-top: 0.2em solid var(--px-text) !important; }
+
+/* Code: a night-side console under a lava rule, in the theme's inks
+   whichever code theme the deck uses */
+.deck-theme-regolith :is(pre, pre.hljs) {
+  background: #15131f !important;
+  color: #e6e1ec;
+  border: 0;
+  border-top: 3px solid #d9541e;
+  border-radius: 0 0 4px 4px !important;
+  box-shadow: none !important;
+}
+.deck-theme-regolith :is(pre.hljs, pre code, pre) { font-family: 'Space Mono', monospace !important; font-variant-ligatures: none; }
+.deck-theme-regolith pre > code.hljs { background: transparent !important; padding: 0 !important; color: inherit; }
+.deck-theme-regolith .px-text pre { padding: 0.6em 0.8em !important; font-size: 0.58em; line-height: 1.55; }
+.deck-theme-regolith pre [class*=hljs-] { color: #e6e1ec; font-style: normal; font-weight: 400; }
+.deck-theme-regolith pre :is(.hljs-comment, .hljs-quote) { color: #8f88a3; font-style: italic; }
+.deck-theme-regolith pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-type) { color: #ff8c5a; }
+.deck-theme-regolith pre :is(.hljs-string, .hljs-regexp, .hljs-addition) { color: #a6d9a0; }
+.deck-theme-regolith pre :is(.hljs-number, .hljs-symbol, .hljs-bullet) { color: #f3c25a; }
+.deck-theme-regolith pre :is(.hljs-title, .hljs-section, .hljs-title.class_, .hljs-title.function_) { color: #ffffff; font-weight: 700; }
+.deck-theme-regolith pre :is(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-property) { color: #8cc4e8; }
+.deck-theme-regolith pre :is(.hljs-meta, .hljs-deletion) { color: #8f88a3; }
+
+/* Tables: a data sheet. An ink header row in mono capitals over a sulfur
+   rule, rows ruled, the quantity in the first column. */
+.deck-theme-regolith table { border: 0 !important; border-collapse: collapse; background: transparent; }
+.deck-theme-regolith table :is(td, th) {
+  border: 0 !important;
+  border-bottom: 1px solid var(--rg-rule) !important;
+  background: transparent !important;
+  color: var(--rg-text) !important;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-regolith table tr:first-child :is(td, th) {
+  border-bottom: 3px solid var(--rg-sulfur) !important;
+  background: var(--rg-ink) !important;
+  color: var(--rg-on-ink) !important;
+  font-family: 'Space Mono', ui-monospace, monospace;
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.deck-theme-regolith table tr:not(:first-child) :is(td, th):first-child { color: var(--rg-ink) !important; font-weight: 600; }
+.deck-theme-regolith table tr:nth-child(odd):not(:first-child) :is(td, th) { background: rgba(29, 26, 43, 0.035) !important; }
+.deck-theme-regolith.px-slide[data-own-background] table :is(td, th),
+.deck-theme-regolith .px-slide[data-own-background] table :is(td, th) { background: transparent !important; color: var(--px-text) !important; border-color: var(--px-text) !important; }
+.deck-theme-regolith.px-slide[data-own-background] table tr:first-child :is(td, th),
+.deck-theme-regolith .px-slide[data-own-background] table tr:first-child :is(td, th) { color: var(--px-text) !important; }
+
+/* The Big Number: in ink, inside an orbit, a lit planet at the orbit's
+   left; its unit (inline code or italic words in it) in mono. Presented,
+   the orbit swings in as the slide opens. */
+.deck-theme-regolith.px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1,
+.deck-theme-regolith .px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1 {
+  position: relative;
+  isolation: isolate;
+  width: fit-content;
+  margin-inline: auto !important;
+  padding: 0.06em 0.3em;
+  color: var(--rg-ink) !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.04;
+  font-variant-numeric: tabular-nums;
+}
+.deck-theme-regolith.px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::before,
+.deck-theme-regolith .px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::before {
+  content: "";
+  position: absolute;
+  left: -0.1em;
+  right: -0.1em;
+  top: 22%;
+  bottom: 12%;
+  z-index: -1;
+  box-sizing: border-box;
+  border: 0.022em solid var(--rg-sulfur);
+  border-radius: 50%;
+}
+.deck-theme-regolith.px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::after,
+.deck-theme-regolith .px-slide[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::after {
+  content: "";
+  position: absolute;
+  left: -0.17em;
+  top: calc(55% - 0.07em);
+  width: 0.14em;
+  height: 0.14em;
+  border-radius: 50%;
+  background: var(--rg-sphere);
+}
+.deck-theme-regolith.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=left],
+.deck-theme-regolith .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=left] { margin-left: 0 !important; }
+.deck-theme-regolith.px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right],
+.deck-theme-regolith .px-slide[data-layout=big-number] [data-placeholder=title] h1[style*=right] { margin-right: 0 !important; }
+.deck-theme-regolith.px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-regolith .px-slide[data-layout=big-number] [data-placeholder=title] h1 :is(code, em) {
+  margin-left: 0.1em;
+  padding: 0 !important;
+  background: none !important;
+  color: var(--rg-lava-text);
+  font-family: 'Space Mono', ui-monospace, monospace !important;
+  font-size: 0.3em;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.deck-theme-regolith.px-slide[data-layout=big-number][data-own-background] [data-placeholder=title] h1 :is(code, em),
+.deck-theme-regolith .px-slide[data-layout=big-number][data-own-background] [data-placeholder=title] h1 :is(code, em) { color: inherit; outline: none; }
+.deck-theme-regolith.reveal:not(.overview) .slides section.px-slide.present[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::before { animation: regolith-orbit 1.3s cubic-bezier(0.2, 0.7, 0.25, 1) 0.15s both; }
+.deck-theme-regolith.reveal:not(.overview) .slides section.px-slide.present[data-layout=big-number]:not([data-own-background]) [data-placeholder=title] h1::after { animation: regolith-arrive 1.3s cubic-bezier(0.2, 0.7, 0.25, 1) 0.15s both; }
+@keyframes regolith-orbit {
+  from { transform: scale(0.35, 0.2) rotate(-24deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes regolith-arrive {
+  from { transform: translate(2.2em, -0.5em) scale(0.4); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@media print, (prefers-reduced-motion: reduce) {
+  .deck-theme-regolith.reveal .slides section.px-slide [data-placeholder=title] h1::before,
+  .deck-theme-regolith.reveal .slides section.px-slide [data-placeholder=title] h1::after { animation: none !important; }
+}
+
+/* The footer: mono capitals. With its sections in sequence it is a core
+   sample: each section a layer of the strata, those passed solid, the
+   current one thicker and its label lava, those to come faint. (The class
+   and the slide both named, to outweigh the presented deck's footer
+   rules.) */
+.deck-theme-regolith.px-slide .px-footer,
+.deck-theme-regolith .px-slide .px-footer { padding-inline: 22px !important; color: var(--rg-muted) !important; }
+.deck-theme-regolith.px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time),
+.deck-theme-regolith .px-slide .px-footer :is(.px-footer-label, .px-footer-page, .px-footer-section, .px-footer-time) {
+  color: var(--rg-muted) !important;
+  font-family: 'Space Mono', ui-monospace, monospace !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.deck-theme-regolith.px-slide .px-footer .px-footer-page,
+.deck-theme-regolith .px-slide .px-footer .px-footer-page { color: var(--rg-ink) !important; font-weight: 700 !important; font-variant-numeric: tabular-nums; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-page:not(:empty)::before,
+.deck-theme-regolith .px-slide .px-footer .px-footer-page:not(:empty)::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--rg-sphere); vertical-align: 0; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-sections,
+.deck-theme-regolith .px-slide .px-footer .px-footer-sections { justify-content: flex-start !important; gap: 0 !important; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section,
+.deck-theme-regolith .px-slide .px-footer .px-footer-section {
+  --rg-layer: #9cc7e4;
+  padding: 0 12px 5px !important;
+  color: var(--rg-pale) !important;
+  background: linear-gradient(var(--rg-layer), var(--rg-layer)) 0 100% / 100% 3px no-repeat;
+  opacity: 1;
+}
+.deck-theme-regolith.px-slide .px-footer .px-footer-section:nth-child(5n + 2),
+.deck-theme-regolith .px-slide .px-footer .px-footer-section:nth-child(5n + 2) { --rg-layer: #7a6a5e; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section:nth-child(5n + 3),
+.deck-theme-regolith .px-slide .px-footer .px-footer-section:nth-child(5n + 3) { --rg-layer: #c4763a; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section:nth-child(5n + 4),
+.deck-theme-regolith .px-slide .px-footer .px-footer-section:nth-child(5n + 4) { --rg-layer: #e3a72f; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section:nth-child(5n + 5),
+.deck-theme-regolith .px-slide .px-footer .px-footer-section:nth-child(5n + 5) { --rg-layer: #f3d27a; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section:not([data-state=past], [data-state=current]),
+.deck-theme-regolith .px-slide .px-footer .px-footer-section:not([data-state=past], [data-state=current]) { background: linear-gradient(90deg, var(--rg-layer) 0 3px, transparent 3px 6px) 0 100% / 6px 2px repeat-x; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section[data-state=past],
+.deck-theme-regolith .px-slide .px-footer .px-footer-section[data-state=past] { color: var(--rg-ink) !important; }
+.deck-theme-regolith.px-slide .px-footer .px-footer-section[data-state=current],
+.deck-theme-regolith .px-slide .px-footer .px-footer-section[data-state=current] { color: var(--rg-lava-text) !important; font-weight: 700 !important; background-size: 100% 6px; }
+.deck-theme-regolith.px-slide[data-own-background] .px-footer .px-footer-section,
+.deck-theme-regolith .px-slide[data-own-background] .px-footer .px-footer-section { --rg-layer: currentColor; }
+
+/* The theme's picture in the Themes panel (components/ThemeGallery.jsx):
+   the strata under the title */
+.deck-theme-regolith .theme-swatch-title::after {
+  content: "";
+  display: block;
+  width: 44px;
+  height: 5px;
+  margin: 5px auto 0;
+  background: var(--rg-strata);
+}
+`;
+
 // client/src/utils/themeCss.js
-var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default, downforce: downforce_default, parallax: parallax_default, fabrica: fabrica_default, manifest: manifest_default };
+var SHEETS = { bauhaus: bauhaus_default, pixel: pixel_default, mission: mission_default, turin: turin_default, gutter: gutter_default, lemma: lemma_default, beamline: beamline_default, kourou: kourou_default, ledger: ledger_default, preprint: preprint_default, transit: transit_default, trace: trace_default, prompt: prompt_default, zenith: zenith_default, quincunx: quincunx_default, partition: partition_default, holdout: holdout_default, separatrix: separatrix_default, runlevel: runlevel_default, fanout: fanout_default, cell: cell_default, graticule: graticule_default, eigenstate: eigenstate_default, mise: mise_default, valence: valence_default, quadrille: quadrille_default, inspiral: inspiral_default, parti: parti_default, downforce: downforce_default, parallax: parallax_default, fabrica: fabrica_default, manifest: manifest_default, regolith: regolith_default };
 function deckThemeClass(themeId) {
   return /^[\w-]+$/.test(themeId || "") ? `deck-theme-${themeId}` : "";
 }
@@ -38592,17 +39390,10 @@ var EMBED_KEYS_SCRIPT = `
     })();
 `;
 var hasHtmlEmbeds = (presentation) => (presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "html"));
-function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false, steps = 0) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
-  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : "");
-  if (/<head[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<head[^>]*>/i, (m) => m + injection);
-  if (/<html[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<html[^>]*>/i, (m) => m + injection);
-  if (/<!doctype[^>]*>/i.test(userHtml))
-    return userHtml.replace(/(<!doctype[^>]*>)/i, "$1" + injection);
-  return injection + userHtml;
+  return embedPage(userHtml, initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : ""), { steps, inDeck: true });
 }
 function absoluteSrc(src) {
   if (!src) return src;
@@ -38870,9 +39661,9 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2}${harmonicsDeckAttrs(el)} style="${style}"></div>`;
       }
       if (el.type === "html") {
-        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData);
+        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData, htmlEmbedModel(el).steps);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed></iframe></div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed="${String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "")}"></iframe></div>`;
       }
       if (el.type === "graph") {
         const srcdoc = graphPageHtml(el, { ...deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}, stability: palette }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -39195,7 +39986,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide) + htmlEmbedStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>
 ${bodyHtml}
 ${footerHtml}
@@ -39237,7 +40028,7 @@ ${sections}
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("katex", "dist/katex.min.css")}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Source+Sans+Pro:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700;1,900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Merriweather:wght@300;400;700;900&family=Fira+Code:wght@300;400;500;600;700&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&family=Big+Shoulders+Display:wght@500..900&family=Big+Shoulders+Stencil+Display:wght@600..900&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&family=Big+Shoulders+Display:wght@500..900&family=Big+Shoulders+Stencil+Display:wght@600..900&family=Space+Grotesk:wght@300..700&display=swap">
   <link rel="stylesheet" href="${(0, import_libraries5.libUrl)("latex.js", "dist/fonts/cmu.css")}">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/futura-pt">
   <link rel="stylesheet" href="https://fonts.cdnfonts.com/css/bauhaus-93">
@@ -39343,7 +40134,7 @@ ${sections}
   <style>
 ${sanitizeCustomCSS(presentation.customCSS)}
   </style>` : ""}
-${offersData ? deckDatasetsScript(deckData.datasets) : ""}
+${offersData ? deckDatasetsScript(deckData.datasets) : ""}${hasHtmlEmbeds(presentation) ? EMBED_PROBLEMS_SCRIPT : ""}
 </head>
 <body>
   <div class="${["reveal", deckThemeClass(theme)].filter(Boolean).join(" ")}">
@@ -39568,7 +40359,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT + HTML_EMBED_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

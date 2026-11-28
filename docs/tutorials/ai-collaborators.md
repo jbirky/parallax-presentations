@@ -37,11 +37,15 @@ Once the link is added, the AI has tools for reading the presentation and for ch
 | `get_slide` | Reads one slide in full: every element with its position and size, its text, what clicking on it does, and warnings for anything past the slide's edges or overlapping |
 | `get_theme` | Reads the theme: its colors, fonts and text styles, the deck's stylesheet with any rules left out, and what a stylesheet can target |
 | `render_slide` | Sees a slide as a picture, as it looks when presenting with all its steps shown, to check how its changes came out |
+| `render_deck` | Sees every slide at once, small and numbered, to review a whole deck in one look |
+| `check_deck` | Lists problems on every slide without drawing them: text past the edges or overlapping, slides with no title or too many words, small text, images without alt text, missing citations, speaker notes and minutes |
 | `show_deck` | Shows you the presentation in the chat, live, in apps that can (below); elsewhere, gives you a link to open it in the editor |
 | `list_datasets` | Reads the datasets linked to the presentation (**Tools › Datasets…**): their columns, sizes and first rows |
 | `add_slide`, `update_slide` | Adds a slide in a layout, or changes one: its layout, title, subtitle and body text, speaker notes, minutes and background |
 | `move_slide`, `delete_slide` | Moves or deletes a slide |
 | `add_element`, `update_element`, `delete_element` | Adds a text box, shape, graph, equation, table, code block, LaTeX or TikZ picture, timeline, HTML embed or diagram; moves, resizes or deletes any element; changes what's in one |
+| `add_image`, `request_upload` | Adds a picture, with alt text: from a public web address, as a small file it makes itself, or from a file sent to a one-time upload address (Claude Code sends one with `curl`). Pictures are kept with the presentation's uploads, on its owner's storage. A data file sent the same way becomes a dataset |
+| `add_dataset` | Adds data (CSV, TSV or JSON) as one of your datasets, linked to the presentation for its graphs to plot. It never replaces a dataset of yours: a name you already use gets `_2` |
 | `get_element_guide` | Reads how to describe a graph or diagram: its fields, templates and an example |
 | `update_outline` | Changes a slide's outline notes, minutes and section, never what's on the slide |
 | `update_deck` | Changes the title, theme, font, text styles (the size of titles, headings and body text, and the headings' font and weight), the deck's own colors and stylesheet (as the Themes panel's Customize and CSS tabs set them), transition and talk length |
@@ -52,7 +56,7 @@ The AI fills slides through their layouts, so its text sits in the layout's plac
 
 Besides text, the AI can add and change graphs (2D and 3D, sliders, vector fields, and data from your datasets), equations with labeled parts, tables, code, LaTeX and TikZ pictures, timelines, HTML embeds with your own JavaScript (a JSXGraph or D3 plot, say), circuit, Feynman, logic, free-body, Venn, timing and geometry diagrams, the periodic table and spherical harmonics. Its graphs and diagrams are checked as their editors check them, so a mistake is caught before it reaches the slide, and it can look at a slide to see how it came out. Diagrams often start from the same templates their editors offer.
 
-An HTML embed the AI writes runs kept apart from the rest of the presentation, as one you paste in does. It can't add images, video, molecules or plugins; it describes those, and you add them. It can move and resize them, though. Changing a text box replaces all of its text, so colors and sizes set by hand inside it go.
+An HTML embed the AI writes runs kept apart from the rest of the presentation, as one you paste in does. It can add pictures, but not video, molecules or plugins; it describes those, and you add them. It can move and resize them, though. Changing a text box replaces all of its text, so colors and sizes set by hand inside it go.
 
 ## Watching it work
 

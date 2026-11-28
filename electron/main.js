@@ -1,11 +1,11 @@
-// Must be set before app is imported
-process.env.ELECTRON_DISABLE_SANDBOX = '1'
-
 const { app, BrowserWindow, shell, dialog, session } = require('electron')
 const path = require('path')
 const net = require('net')
 
-app.commandLine.appendSwitch('no-sandbox')
+// Every page runs in Chromium's sandbox, since a deck runs its author's code.
+// (Whether Chromium can sandbox at all is settled before this file runs: on
+// Linux the .deb's install script sets that up, see build/linux.)
+app.enableSandbox()
 
 // Electron names the user data folder after package.json's name. Keep the
 // folder from before the package was renamed so existing desktop installs
@@ -70,6 +70,9 @@ function createWindow() {
     minWidth: 1000,
     minHeight: 600,
     title: 'Parallax',
+    // The P, for desktops that take a window's icon from the window (Linux
+    // without the .deb's desktop entry, as an AppImage or from source)
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

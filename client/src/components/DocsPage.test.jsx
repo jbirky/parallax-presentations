@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
-import DocsPage from './DocsPage'
+import DocsPage, { docsHref } from './DocsPage'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -45,5 +45,25 @@ describe('the docs page', () => {
     const { el } = await open('guide/x', () => response('[{"title":"<img src=x onerror=alert(1)>"}]', 'application/json'))
     expect(el.querySelector('.docs-markdown img')).toBeNull()
     expect(el.querySelector('.docs-markdown').textContent).toContain('Not Found')
+  })
+
+  it('opens links to other docs pages here, and the rest in a new tab', async () => {
+    const md = '[Access](./ai-access.md) [Graphs](/tutorials/graphs) [Install](../guide/installation.md#docker) [Site](https://example.com) [Up](#top)'
+    const { el } = await open('tutorials/ai-agents', () => response(md, 'text/plain; charset=utf-8'))
+    const links = [...el.querySelectorAll('.docs-markdown a')].map(a => [a.textContent, a.getAttribute('href'), a.getAttribute('target')])
+    expect(links).toEqual([
+      ['Access', '#docs/tutorials/ai-access', null],
+      ['Graphs', '#docs/tutorials/graphs', null],
+      ['Install', '#docs/guide/installation', null],
+      ['Site', 'https://example.com', '_blank'],
+      ['Up', '#top', '_blank'],
+    ])
+  })
+
+  it('reads only docs sections out of a link', () => {
+    expect(docsHref('./plugins.md', 'features')).toBe('#docs/features/plugins')
+    expect(docsHref('/presentations/abc', 'tutorials')).toBeNull()
+    expect(docsHref('name', 'tutorials')).toBeNull()
+    expect(docsHref('../../etc/passwd', 'tutorials')).toBeNull()
   })
 })

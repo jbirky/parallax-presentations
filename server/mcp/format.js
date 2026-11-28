@@ -637,5 +637,6 @@ function deckMarkdown(deck) {
 
 module.exports = {
   parseHtml, htmlToMarkdown, textOf, titleOf, slideOrder, shownSlides, findSlide, elementsInOrder,
+  warningsOf, hasText, notesText, SLIDE_W, SLIDE_H,
   deckOutline, slideDetail, deckMarkdown, textStylesFacts, themeText,
 }

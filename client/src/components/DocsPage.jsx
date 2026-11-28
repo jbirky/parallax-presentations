@@ -4,7 +4,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Book, FileText, Wrench, ChevronRight } from 'lucide-react'
 
-function renderMarkdown(md) {
+// A link to another docs page, as the docs write them for VitePress
+// (./ai-access.md, /tutorials/graphs, ../guide/installation.md#docker), to
+// that page here, at #docs/<section>/<page>; `section` is the one the page
+// linking is in. Anything else, null
+const DOCS_SECTIONS = ['guide', 'features', 'tutorials']
+export function docsHref(href, section) {
+  const m = href.match(/^(\.\/|\.\.\/|\/)(?:([a-z]+)\/)?([a-z0-9_-]+)(?:\.md)?(?:#[\w-]*)?$/i)
+  if (!m) return null
+  const [, start, named, page] = m
+  const to = named || (start === './' ? section : null)
+  return DOCS_SECTIONS.includes(to) ? `#docs/${to}/${page}` : null
+}
+
+function renderMarkdown(md, section) {
   // extract code blocks first to protect their content
   const codeBlocks = []
   let html = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
@@ -65,7 +78,10 @@ function renderMarkdown(md) {
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, href) => {
+      const here = docsHref(href, section)
+      return here ? `<a href="${here}">${text}</a>` : `<a href="${href}" target="_blank" rel="noopener">${text}</a>`
+    })
 
   // blockquotes (consecutive lines)
   html = html.replace(/((?:^> .+\n?)+)/gm, (block) => {
@@ -134,7 +150,7 @@ export default function DocsPage({ initialPage }) {
     if (!DOC_LINK.test(link)) { setContent(renderMarkdown(NOT_FOUND)); setLoading(false); return }
     fetch(`/api/docs/${link}`)
       .then(r => r.ok && (r.headers.get('content-type') || '').startsWith('text/plain') ? r.text() : NOT_FOUND)
-      .then(md => { setContent(renderMarkdown(md)); setLoading(false) })
+      .then(md => { setContent(renderMarkdown(md, link.split('/')[0])); setLoading(false) })
       .catch(() => { setContent('<p>Failed to load documentation.</p>'); setLoading(false) })
   }, [])
 

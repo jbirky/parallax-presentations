@@ -328,7 +328,40 @@ function addGuided(deck, slide, number, input, ctx) {
 
 // ── The operations ──
 
+// Where add_image puts an image with no box of its own: as large as fits
+// under a title, keeping its shape
+const IMAGE_AREA = { x: 60, y: 130, width: 840, height: 380 }
+
 const OPS = {
+  // Only through add_image (server/mcp/index.js), which stores the picture
+  // with the deck's uploads first: src is that upload's path, and size its
+  // pixels when known. Not one of apply_edits' ops.
+  add_image(deck, input, ctx) {
+    const { slide, number } = slideAt(deck, input.slide)
+    if ((slide.elements || []).length >= MAX_ELEMENTS) fail(`A slide can have up to ${MAX_ELEMENTS} elements.`)
+    if (typeof input.src !== 'string' || !/^\/uploads\/[\w./-]+$/.test(input.src) || input.src.includes('..')) fail('An image needs a picture stored with the presentation.')
+    const alt = str(input.alt, 'alt', 300, { min: 1 })
+    if (alt === undefined) fail('Give the image alt text: what it shows, for people who can\'t see it.')
+    const fit = input.fit ?? 'contain'
+    if (!['contain', 'cover'].includes(fit)) fail('fit is contain (the whole picture shows) or cover (it fills the box, cropped).')
+    const given = geometry(input, {})
+    const ratio = input.size && input.size.width > 0 && input.size.height > 0 ? input.size.height / input.size.width : null
+    let width = given.width, height = given.height
+    if (width === undefined && height === undefined) {
+      const r = ratio || IMAGE_AREA.height / IMAGE_AREA.width
+      width = Math.min(IMAGE_AREA.width, IMAGE_AREA.height / r)
+      height = width * r
+    } else if (width === undefined) width = ratio ? height / ratio : height * 4 / 3
+    else if (height === undefined) height = ratio ? width * ratio : width * 3 / 4
+    width = Math.round(width); height = Math.round(height)
+    const x = given.x ?? Math.round(IMAGE_AREA.x + (IMAGE_AREA.width - width) / 2)
+    const y = given.y ?? Math.round(IMAGE_AREA.y + Math.max(0, (IMAGE_AREA.height - height) / 2))
+    const el = { id: randomUUID(), type: 'image', x, y, width, height, zIndex: maxZ(slide) + 1, src: input.src, objectFit: fit, alt }
+    if (!Array.isArray(slide.elements)) slide.elements = []
+    slide.elements.push(el)
+    ctx.touch(slide, [el])
+    return `Added an image \`${el.id}\` to slide ${number} at x ${el.x}, y ${el.y}, ${el.width}×${el.height}.`
+  },
   update_deck(deck, input, ctx) {
     const done = []
     const title = str(input.title, 'title', 200, { min: 1 })
@@ -484,7 +517,7 @@ const OPS = {
     const { slide, number } = slideAt(deck, input.slide)
     const type = input.type
     if (!ELEMENT_TYPES.includes(type)) {
-      fail(`type must be one of: ${ELEMENT_TYPES.join(', ')}. Images, video, molecules and plugins can't be added through a link yet: describe them to the person, who can add them in the editor.`)
+      fail(`type must be one of: ${ELEMENT_TYPES.join(', ')}. Images go in with add_image. Video, molecules and plugins can't be added through a link yet: describe them to the person, who can add them in the editor.`)
     }
     if ((slide.elements || []).length >= MAX_ELEMENTS) fail(`A slide can have up to ${MAX_ELEMENTS} elements.`)
     if (guides.GUIDES[type]) return addGuided(deck, slide, number, input, ctx)
@@ -620,6 +653,7 @@ const OPS = {
 
 // What each operation takes, for checking the edits apply_edits is given
 const FIELDS = {
+  add_image: ['slide', 'src', 'alt', 'fit', 'size', 'x', 'y', 'width', 'height'],
   update_deck: ['title', 'theme', 'font', 'textStyles', 'themeColors', 'themeCss', 'transition', 'talkMinutes'],
   add_slide: ['layout', 'after', 'title', 'subtitle', 'body', 'notes', 'minutes'],
   update_slide: ['slide', 'layout', 'title', 'subtitle', 'body', 'notes', 'minutes', 'background'],
@@ -636,7 +670,11 @@ const DESTRUCTIVE = new Set(['delete_slide', 'delete_element'])
 // Makes edits, [{ op, ...fields }], to deck in place, in order. Returns
 // { lines, slideId, elementIds }: what each did, and the slide changed last
 // with the elements changed on it, for the AI's place in the avatars.
-function runEdits(deck, edits, { datasets = null } = {}) {
+// Ops only the server's own tools make (add_image, after storing the
+// picture), never apply_edits
+const INTERNAL_OPS = new Set(['add_image'])
+
+function runEdits(deck, edits, { datasets = null, internal = false } = {}) {
   if (!Array.isArray(edits) || !edits.length) fail('Give at least one edit.')
   if (edits.length > MAX_EDITS) fail(`Give at most ${MAX_EDITS} edits at once.`)
   let slideId = null
@@ -657,7 +695,7 @@ function runEdits(deck, edits, { datasets = null } = {}) {
     const where = edits.length > 1 ? `Edit ${i + 1}` : 'The edit'
     if (!edit || typeof edit !== 'object' || Array.isArray(edit)) fail(`${where} must be an object with an op.`)
     const { op, ...input } = edit
-    if (!OPS[op]) fail(`${where} has op ${JSON.stringify(op)}; it must be one of: ${Object.keys(OPS).join(', ')}.`)
+    if (!OPS[op] || (INTERNAL_OPS.has(op) && !internal)) fail(`${where} has op ${JSON.stringify(op)}; it must be one of: ${Object.keys(OPS).filter(o => !INTERNAL_OPS.has(o)).join(', ')}.`)
     const unknown = Object.keys(input).filter(k => !FIELDS[op].includes(k))
     if (unknown.length) fail(`${where} (${op}) has ${unknown.map(k => JSON.stringify(k)).join(', ')}, which ${op} doesn't take. It takes: ${FIELDS[op].join(', ')}.`)
     try {

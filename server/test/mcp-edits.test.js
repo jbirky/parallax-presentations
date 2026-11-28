@@ -230,6 +230,13 @@ describe("an AI collaborator's edits", () => {
     runEdits(d, [{ op: 'add_element', slide: 2, type: 'html', spec: { content: '<div id="b"></div>\r\n<script>draw()</script>' } }])
     const embed = d.slides[1].elements.find(el => el.type === 'html')
     assert.deepEqual([embed.x, embed.y, embed.width, embed.height, embed.content], [60, 70, 840, 400, '<div id="b"></div>\n<script>draw()</script>'])
+    // Steps: clicks its page hears with parallax.onStep, which update_element keeps when the content changes
+    const stepped = '<div id="b"></div><script>parallax.onStep(s => draw(s))</script>'
+    runEdits(d, [{ op: 'update_element', slide: 2, element: embed.id, spec: { content: stepped, steps: 3, stepStart: 2 } }])
+    assert.deepEqual([embed.content, embed.steps, embed.stepStart], [stepped, 3, 2])
+    runEdits(d, [{ op: 'update_element', slide: 2, element: embed.id, spec: { content: stepped.replace('draw(s)', 'paint(s)') } }])
+    assert.deepEqual([embed.steps, embed.stepStart], [3, 2])
+    assert.match(format.slideDetail(d, format.findSlide(d, 2)), /HTML, 1 line, 3 steps from the slide's click 2:/)
 
     // get_slide reads them back as spec
     const detail = format.slideDetail(d, format.findSlide(d, 1))
@@ -261,6 +268,8 @@ describe("an AI collaborator's edits", () => {
     bad({ op: 'add_element', slide: 1, type: 'image' }, /type must be one of: text, shape, graph/)
     bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: '  ' } }, /An HTML element needs content/)
     bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: 'x'.repeat(50001) } }, /content can be up to 50000 characters/)
+    bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: '<p>x</p>', steps: 2 } }, /never calls it/)
+    bad({ op: 'add_element', slide: 1, type: 'html', spec: { content: '<script>parallax.onStep(f)</script>', steps: 51 } }, /steps/)
   })
 
   it('say what to fix', () => {

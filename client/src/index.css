@@ -3,7 +3,7 @@
 /* Google Fonts — batch 2: rounded / geometric */
 @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&family=Jost:wght@300;400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Press+Start+2P&family=VT323&family=B612+Mono:wght@400;700&family=Titillium+Web:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Questrial&family=Didact+Gothic&family=Nunito:wght@300;400;500;600;700;800;900&family=Nunito+Sans:wght@300;400;500;600;700;800;900&family=Quicksand:wght@300;400;500;600;700&family=Dosis:wght@300;400;500;600;700;800&family=M+PLUS+Rounded+1c:wght@300;400;500;700;900&family=Jura:wght@300;400;500;600;700&family=Codystar:wght@300;400&family=Barlow:wght@300;400;500;600;700;800;900&family=Barlow+Condensed:wght@300;400;500;600;700;800;900&family=Asap+Condensed:wght@400;500;600;700;900&family=Istok+Web:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 /* Google Fonts — batch 3: modern / technical */
-@import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&family=Big+Shoulders+Display:wght@500..900&family=Big+Shoulders+Stencil+Display:wght@600..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inconsolata:wght@300;400;500;600;700;800;900&family=Source+Sans+3:wght@300;400;500;600;700;800;900&family=Fira+Sans:wght@300;400;500;600;700;800;900&family=Roboto+Condensed:wght@300;400;500;700&family=Roboto+Mono:wght@300;400;500;600;700&family=Rubik:wght@300;400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Manrope:wght@300;400;500;600;700;800&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Roboto+Flex:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700;800;900&family=Geist:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Figtree:wght@300;400;500;600;700;800;900&family=STIX+Two+Text:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Libre+Franklin:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&family=Caveat:wght@400..700&family=Lexend:wght@300..800&family=Archivo:ital,wdth,wght@0,62..125,100..900;1,62..125,100..900&family=Architects+Daughter&family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Saira:ital,wdth,wght@0,50..125,100..900;1,50..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&family=Big+Shoulders+Display:wght@500..900&family=Big+Shoulders+Stencil+Display:wght@600..900&family=Space+Grotesk:wght@300..700&display=swap');
 /* Computer Modern fonts (CMU) */
 @import url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts.css');
 /* Futura PT */
@@ -110,6 +110,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* The dashboard's file browser (components/DeckBrowser.jsx) */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* The wordmark (components/ParallaxMark.jsx Wordmark): the mark as the P of
+   "Parallax", a capital's height (0.69em of Archivo) on the baseline, then
+   "arallax". Its size is the font size. */
+.px-wordmark { display: inline-flex; align-items: baseline; white-space: nowrap; font-family: 'Archivo', 'Inter', sans-serif; font-weight: 800; line-height: 1; letter-spacing: -0.035em; }
+.px-wordmark-p { display: block; flex: none; width: 0.69em; height: 0.69em; margin-right: 0.05em; }
 .deck-browser-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
 .deck-browser-bar h2 { margin: 0; }
 .deck-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; margin-left: -9px; }
@@ -193,6 +198,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .home-page .home-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); }
 .home-page .home-logo svg { display: block; flex: none; }
 .home-page .home-logo span { color: inherit; }
+.home-page .home-logo .px-wordmark { font-size: 26px; font-family: var(--hp-display); }
 .home-page .home-logo .beta-badge { margin: 0; padding: 3px 6px; vertical-align: baseline; font: 700 10.5px/1.2 'Inter', sans-serif; letter-spacing: 0.1em; color: var(--bg-primary); background: var(--text-primary); border: 0; border-radius: 0; }
 .home-link { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 12px; font-weight: 500; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); transition: color 0.15s, border-color 0.15s; }
 .home-link:hover { color: var(--text-primary); border-color: var(--text-primary); }
@@ -248,6 +254,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 [data-theme="light"] .admin-header { background: var(--bg-secondary); }
 .admin-logo { display: inline-flex; align-items: center; gap: 10px; font: 800 22px/1 var(--hp-display); letter-spacing: -0.035em; color: var(--text-primary); text-decoration: none; }
 .admin-logo svg { display: block; flex: none; }
+.admin-logo .px-wordmark { font-size: 26px; font-family: var(--hp-display); }
 .admin-header-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; font-size: 12px; color: var(--text-muted); }
 .admin-header-tools .btn { padding: 7px 12px; white-space: nowrap; text-decoration: none; }
 .admin-intro { display: grid; gap: 10px; padding-top: clamp(28px, 4vw, 48px); }
@@ -846,7 +853,8 @@ sup[data-cite] { font-weight: 700; }
    shadows, Archivo headings over Inter, and square corners. The page is ink
    unless light is chosen (the nav's toggle, or the dashboard's:
    utils/theme.js); the light bands (.lp-light) and the dark panels (the
-   showcase, Practice Talk, the lead plan) stay as they are in either. */
+   showcase, Practice Talk, the lead plan) stay as they are in either. The
+   Templates tab, a page of its own, follows the theme. */
 .landing-page {
   /* The app's tokens, for the docs that open in place of the page */
   --bg-primary: #1f1f22; --bg-secondary: #252528; --bg-panel: #29292c; --bg-card: #2e2e32;
@@ -869,7 +877,7 @@ sup[data-cite] { font-weight: 700; }
   -webkit-font-smoothing: antialiased;
 }
 /* Ink: the page, and the panels that stay dark */
-.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead,
+.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead, .landing-page .lp-install-panel,
 .landing-page .lp-steps > button.on, .landing-page .lp-show-tabs [aria-selected="true"] {
   --lp-bg: var(--lp-ink); --lp-raise: #28282c; --lp-card: #2e2e32;
   --lp-line: rgba(236, 235, 230, 0.16); --lp-edge: rgba(236, 235, 230, 0.45);
@@ -889,6 +897,9 @@ sup[data-cite] { font-weight: 700; }
   color-scheme: light;
 }
 .landing-page .lp-light.alt { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
+/* The Templates tab is a page of its own, so it follows the theme: ink, or
+   in light the alternate paper, its cards on paper */
+[data-theme="light"] .landing-page .lp-templates { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
 [data-theme="light"] .landing-page {
   --bg-primary: #ecebe6; --bg-secondary: #f5f4f0; --bg-panel: #e6e5df; --bg-card: #f5f4f0;
   --bg-hover: #e2e1db; --bg-active: #d7d6cf; --border: #cfcec7; --border-light: #bcbbb4;
@@ -915,7 +926,7 @@ sup[data-cite] { font-weight: 700; }
 .lp-nav-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
 .lp-logo { display: inline-flex; align-items: center; gap: 10px; color: var(--lp-strong); white-space: nowrap; }
 .lp-mark { display: block; flex: none; }
-.lp-word { font: 800 23px/1 var(--lp-display); letter-spacing: -0.035em; }
+.lp-logo .px-wordmark { font-size: 28px; font-family: var(--lp-display); }
 .landing-page .lp-logo .beta-badge { margin: 0; padding: 3px 6px; vertical-align: baseline; transform: none; font: 700 10.5px/1.2 var(--lp-sans); letter-spacing: 0.1em; color: var(--lp-bg); background: var(--lp-strong); border: 0; border-radius: 0; }
 .lp-links { display: flex; align-items: center; gap: 2px; }
 .lp-links > button, .lp-links > a { padding: 12px 10px; color: var(--lp-strong); font-size: 14.5px; font-weight: 500; text-decoration: none; text-underline-offset: 7px; text-decoration-thickness: 2px; white-space: nowrap; }
@@ -927,25 +938,26 @@ sup[data-cite] { font-weight: 700; }
 @media (max-width: 860px) { .lp-links .lp-wide { display: none; } }
 @media (max-width: 520px) {
   .lp-links .lp-mid, .lp-nav .lp-logo .beta-badge { display: none; }
-  .lp-nav .lp-mark { width: 28px; height: 28px; }
-  .lp-nav .lp-word { font-size: 20px; }
+  .lp-nav .px-wordmark { font-size: 25px; }
   .lp-links > button, .lp-links > a { padding-inline: 7px; }
   .lp-links > .lp-signin { margin-left: 4px; padding-inline: 12px; }
 }
 @media (max-width: 420px) {
   .lp-nav-row, .lp-logo { gap: 8px; }
-  .lp-nav .lp-mark { width: 26px; height: 26px; }
-  .lp-nav .lp-word { font-size: 19px; }
+  .lp-nav .px-wordmark { font-size: 23px; }
   .lp-links > button, .lp-links > a { padding-inline: 6px; font-size: 14px; }
   .lp-links > .lp-signin { margin-left: 2px; padding-inline: 10px; }
 }
 @media (max-width: 370px) { .lp-links > button, .lp-links > a { padding-inline: 5px; } .lp-links > .lp-signin { padding-inline: 8px; } }
 /* The smallest phones: the mark alone (the button's label still says Parallax) */
-@media (max-width: 340px) { .lp-nav .lp-word { display: none; } }
+@media (max-width: 340px) { .lp-nav .lp-word { display: none; } .lp-nav .px-wordmark-p { width: 24px; height: 24px; margin: 0; } }
 
 /* Hero */
 .lp-hero { padding-block: clamp(56px, 8vw, 88px) clamp(72px, 9vw, 104px); scroll-margin-top: 80px; }
-.lp-hero h1 { margin-top: 24px; max-width: 1040px; font-size: clamp(42px, 6.4vw, 92px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
+/* The first line, "Create interactive and intuitive slides for", is about
+   17.3em wide: at 4.9vw it fits the column from about 690px up; narrower,
+   it wraps */
+.lp-hero h1 { margin-top: 24px; max-width: none; font-size: clamp(36px, 4.9vw, 70px); line-height: 0.98; letter-spacing: -0.025em; color: var(--lp-strong); }
 .lp-hero h1 em, .lp-head h2 em { font-style: normal; text-shadow: var(--lp-fringe); }
 /* The fringed words in the hero, section and closing titles (ParallaxWords):
    the fringe's red copy a depth behind the blue, both behind the ink, moving
@@ -985,12 +997,12 @@ sup[data-cite] { font-weight: 700; }
 .lp-head p { max-width: 660px; font-size: 18px; line-height: 1.5; color: var(--lp-text); }
 
 /* Examples */
-.lp-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
-.lp-filters button { min-height: 44px; padding: 0 16px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1.5px solid var(--lp-strong); }
-.lp-filters button span { margin-left: 6px; color: var(--lp-faint); }
-.lp-filters button:hover { background: color-mix(in srgb, var(--lp-strong) 7%, transparent); }
-.lp-filters button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); }
-.lp-filters button[aria-pressed="true"] span { color: color-mix(in srgb, var(--lp-bg) 62%, var(--lp-strong)); }
+.lp-filters, .lp-install-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+:is(.lp-filters, .lp-install-tabs) button { min-height: 44px; padding: 0 16px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1.5px solid var(--lp-strong); }
+:is(.lp-filters, .lp-install-tabs) button span { margin-left: 6px; color: var(--lp-faint); }
+:is(.lp-filters, .lp-install-tabs) button:hover { background: color-mix(in srgb, var(--lp-strong) 7%, transparent); }
+:is(.lp-filters, .lp-install-tabs) button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); }
+:is(.lp-filters, .lp-install-tabs) button[aria-pressed="true"] span { color: color-mix(in srgb, var(--lp-bg) 62%, var(--lp-strong)); }
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 24px; margin-top: 32px; }
 .lp-card { display: grid; grid-template-rows: auto 1fr; text-align: left; text-decoration: none; color: var(--lp-text); background: var(--lp-card); border-top: 4px solid var(--lp-strong); transition: box-shadow 0.15s, transform 0.15s; }
 .lp-card:hover { transform: translateY(-3px); box-shadow: var(--lp-small-shadow); }
@@ -1372,13 +1384,53 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-plan li { display: flex; align-items: baseline; gap: 10px; }
 .lp-plan li::before { content: ''; flex: none; width: 8px; height: 8px; background: var(--lp-blue); transform: translateY(-1px); }
 .lp-soon { display: inline-block; margin-left: 2px; padding: 0 6px; font: 600 10.5px/1.6 var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-tag); border: 1px solid currentColor; vertical-align: 1px; white-space: nowrap; }
-.lp-selfhost { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; margin-top: 32px; padding: 28px 32px; border: 2px solid var(--lp-strong); }
-.lp-selfhost > div { flex: 1 1 520px; display: flex; flex-direction: column; gap: 8px; }
-.lp-selfhost p { font-size: 16px; line-height: 1.5; color: var(--lp-strong); }
-@media (max-width: 600px) { .lp-selfhost { padding: 24px 20px; } .lp-selfhost .lp-btn { width: 100%; } }
+.lp-selfhost, .lp-agents-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; margin-top: 32px; padding: 28px 32px; border: 2px solid var(--lp-strong); }
+:is(.lp-selfhost, .lp-agents-more) > div { flex: 1 1 520px; display: flex; flex-direction: column; gap: 8px; }
+:is(.lp-selfhost, .lp-agents-more) p { font-size: 16px; line-height: 1.5; color: var(--lp-strong); }
+@media (max-width: 600px) { :is(.lp-selfhost, .lp-agents-more) { padding: 24px 20px; } :is(.lp-selfhost, .lp-agents-more) .lp-btn { width: 100%; } }
+/* AI agents (#ai): a card for each way to connect one, with what to type,
+   the Claude Code plugin's lit like the lead plan */
+.lp-agents { display: grid; grid-template-columns: 1.35fr 1fr 1fr; gap: 24px; margin-top: 48px; }
+@media (max-width: 1000px) { .lp-agents { grid-template-columns: 1fr 1fr; } .lp-agent.lead { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .lp-agents { grid-template-columns: 1fr; } }
+.lp-agent { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 28px; background: var(--lp-card); color: var(--lp-text); border-top: 4px solid var(--lp-strong); }
+.lp-agent.lead { background: var(--lp-bg); border-top-color: var(--lp-bg); box-shadow: var(--lp-frame-shadow); }
+.lp-agent > h3 { font-size: 22px; line-height: 1.2; letter-spacing: -0.01em; color: var(--lp-strong); }
+.lp-agent > p { font-size: 15px; line-height: 1.5; }
+.lp-agent pre { margin: 4px 0 0; padding: 14px 16px; font: 13px/1.65 var(--lp-mono); color: var(--lp-strong); white-space: pre; overflow-x: auto;
+  background: color-mix(in srgb, var(--lp-strong) 7%, transparent); border-left: 3px solid var(--lp-blue); }
+.lp-agent .lp-quiet { margin-top: auto; padding-top: 4px; }
 .lp-plan-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: auto; padding-top: 8px; }
+/* A plan that can't be bought yet: its button says Coming soon and does nothing */
+.lp-plan-row .lp-btn:disabled, .lp-plan-row .lp-btn:disabled:hover { opacity: 0.6; cursor: default; background: none; border-color: var(--lp-edge); box-shadow: none; }
 .lp-quiet { font-size: 14px; color: var(--lp-text); text-decoration: underline; text-underline-offset: 3px; }
 .lp-quiet:hover { color: var(--lp-strong); }
+
+/* Install the desktop app (#install, InstallSteps.jsx): a tab for each
+   platform, and its steps in an ink panel like the lead plan's */
+.lp-install { margin-top: 40px; }
+.lp-install-tabs { margin-top: 0; }
+.landing-page .lp-install-panel { display: flex; flex-direction: column; gap: 18px; max-width: 860px; margin-top: 24px; padding: 32px; background: var(--lp-bg); color: var(--lp-text); box-shadow: var(--lp-frame-shadow); }
+.lp-install-panel ol { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: lp-step; }
+.lp-install-panel li { position: relative; padding-left: 44px; counter-increment: lp-step; font-size: 16px; line-height: 1.55; }
+.lp-install-panel li::before { content: counter(lp-step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; display: grid; place-items: center; font: 700 14px/1 var(--lp-display); color: var(--lp-bg); background: var(--lp-strong); }
+.lp-install-panel b { font-weight: 600; color: var(--lp-strong); }
+.lp-install-panel p { font-size: 16px; line-height: 1.55; }
+.lp-install-panel :not(pre) > code { font: 0.88em var(--lp-mono); color: var(--lp-strong); overflow-wrap: anywhere; }
+.lp-install-distros { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-install-distros button { min-height: 40px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1px solid var(--lp-edge); }
+.lp-install-distros button:hover { border-color: var(--lp-strong); }
+.lp-install-distros button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); border-color: var(--lp-strong); }
+.lp-install-code { position: relative; min-width: 0; }
+.lp-install-code pre { margin: 0; padding: 16px 56px 16px 18px; font: 13.5px/1.7 var(--lp-mono); color: var(--lp-strong); white-space: pre; overflow-x: auto;
+  background: color-mix(in srgb, var(--lp-strong) 7%, transparent); border-left: 3px solid var(--lp-blue); }
+.lp-install-code button { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; display: grid; place-items: center; color: var(--lp-strong); border: 1px solid var(--lp-line); }
+.lp-install-code button:hover { border-color: var(--lp-strong); }
+.lp-install-panel .lp-install-note { font-size: 14.5px; color: var(--lp-faint); }
+.lp-install-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+.lp-install-panel .lp-install-foot { padding-top: 18px; border-top: 1px solid var(--lp-line); font-size: 14.5px; }
+.lp-install-foot .lp-quiet { margin-left: 4px; white-space: nowrap; }
+@media (max-width: 600px) { .landing-page .lp-install-panel { padding: 24px 18px; } .lp-install-row .lp-btn { width: 100%; } }
 
 /* The last word: try it */
 .lp-cta-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 48px; }
@@ -1393,7 +1445,7 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-footer { padding-block: 64px 48px; background: var(--lp-bg); color: var(--lp-faint); border-top: 1px solid var(--lp-line); font-size: 14px; }
 .lp-footer-cols { display: grid; grid-template-columns: 1.4fr repeat(3, minmax(0, 1fr)); gap: 40px; }
 .lp-footer-cols > div:first-child p { margin-top: 14px; max-width: 36ch; line-height: 1.55; }
-.lp-footer .lp-word { font-size: 20px; }
+.lp-footer .px-wordmark { font-size: 24px; }
 .lp-footer h4 { margin-bottom: 12px; font: 600 12px var(--lp-sans); letter-spacing: 0.15em; text-transform: uppercase; color: var(--lp-strong); }
 .lp-footer ul { list-style: none; display: grid; gap: 4px; }
 .lp-footer ul a, .lp-footer ul button { display: inline-block; padding: 6px 0; color: var(--lp-text); text-decoration: none; font-size: 14px; }

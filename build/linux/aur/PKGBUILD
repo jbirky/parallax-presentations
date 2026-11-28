@@ -1,0 +1,32 @@
+# Maintainer: Jess Birky <support at parallax-presentations dot com>
+#
+# Repackages the .deb from Parallax's GitHub release. The release workflow
+# (.github/workflows/release.yml) sets pkgver, pkgrel and the checksum here,
+# and pushes this with its .SRCINFO to the AUR, on every release.
+
+pkgname=parallax-bin
+pkgver=1.1.0
+pkgrel=1
+pkgdesc='Interactive and intuitive slides for complex concepts'
+arch=('x86_64')
+url='https://parallax-presentations.com'
+license=('AGPL-3.0-or-later')
+# What the binaries link to (namcap agrees), the icons' theme, and xdg-utils,
+# which opens links
+depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'glib2' 'glibc' 'gtk3'
+         'hicolor-icon-theme' 'libcups' 'libdrm' 'libgcc' 'libx11' 'libxcb'
+         'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr'
+         'mesa' 'nspr' 'nss' 'pango' 'systemd-libs' 'xdg-utils')
+provides=('parallax')
+conflicts=('parallax')
+options=('!strip' '!debug')
+source=("https://github.com/jbirky/parallax-presentations/releases/download/v$pkgver/parallax_${pkgver}_amd64.deb")
+sha256sums=('febac6be0e0b7531997212dfbb02a8f4d637fc2c28492b2c7dc146717bd338fe')
+
+package() {
+  bsdtar -xf data.tar.xz -C "$pkgdir" --exclude ./usr/share/doc
+  install -d "$pkgdir/usr/bin"
+  ln -s /opt/Parallax/parallax "$pkgdir/usr/bin/parallax"
+  # Arch lets programs create user namespaces, which Chromium's sandbox runs
+  # in, so chrome-sandbox needn't be setuid (the .deb's 0755 stays)
+}

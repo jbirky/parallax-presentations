@@ -180,9 +180,9 @@ describe('AI collaborator links', { skip }, () => {
     const list = await rpc(secret, 'tools/list')
     assert.equal(list.status, 200, JSON.stringify(list.body))
     const tools = Object.fromEntries(list.body.result.tools.map(tool => [tool.name, tool]))
-    assert.deepEqual(Object.keys(tools).sort(), ['add_element', 'add_slide', 'apply_edits', 'deck_preview', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
-      'get_slide', 'get_theme', 'import_beamer', 'list_datasets', 'move_slide', 'render_slide', 'show_deck', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
-    for (const name of ['get_deck', 'get_slide', 'get_theme', 'render_slide', 'list_datasets', 'get_element_guide', 'show_deck', 'deck_preview']) assert.equal(tools[name].annotations.readOnlyHint, true)
+    assert.deepEqual(Object.keys(tools).sort(), ['add_dataset', 'add_element', 'add_image', 'add_slide', 'apply_edits', 'check_deck', 'deck_preview', 'delete_element', 'delete_slide', 'get_deck', 'get_element_guide',
+      'get_slide', 'get_theme', 'import_beamer', 'list_datasets', 'move_slide', 'render_deck', 'render_slide', 'request_upload', 'show_deck', 'update_deck', 'update_element', 'update_outline', 'update_slide'])
+    for (const name of ['get_deck', 'get_slide', 'get_theme', 'render_slide', 'render_deck', 'check_deck', 'list_datasets', 'get_element_guide', 'show_deck', 'deck_preview']) assert.equal(tools[name].annotations.readOnlyHint, true)
     assert.ok(tools.add_element.inputSchema.properties.type.enum.includes('circuit'))
     assert.match(toolText(await callTool(secret, 'get_element_guide')), /- \*\*graph\*\* \(Graph\)/)
     assert.match(toolText(await callTool(secret, 'get_element_guide', { type: 'circuit' })), /^# Circuit diagram \(type "circuit"\)[\s\S]*Templates \("template": key, with spec to change it\): lamp \(Switch and lamp\)/)
@@ -385,6 +385,20 @@ describe('AI collaborator links', { skip }, () => {
       await callTool(secret, 'update_slide', { slide: 2, notes: 'Changed' })
       await callTool(secret, 'render_slide', { slide: 2 })
       assert.equal(drawn.length, 2, 'a changed deck is drawn again')
+
+      // What the slide's HTML embeds reported while it was drawn, kept with the picture
+      thumbnails.renderSlide = async opts => {
+        drawn.push(opts)
+        opts.problems.push({ slide: 'slide-cutoff', element: 'emb1', message: 'Uncaught ReferenceError: boom is not defined (line 4)' })
+        return Buffer.from('half drawn')
+      }
+      await callTool(secret, 'update_slide', { slide: 2, notes: 'Changed again' })
+      const reported = (await callTool(secret, 'render_slide', { slide: 2 })).body.result.content
+      assert.equal(reported.length, 3)
+      assert.equal(reported[2].text, 'HTML embeds reported problems while drawing, so they may be blank or half drawn. Fix their content with update_element:\n- slide 2, `emb1`: Uncaught ReferenceError: boom is not defined (line 4)')
+      const again = (await callTool(secret, 'render_slide', { slide: 2 })).body.result.content
+      assert.equal(drawn.length, 3)
+      assert.equal(again[2].text, reported[2].text)
 
       const missing = await callTool(secret, 'render_slide', { slide: 5 })
       assert.equal(missing.body.result.isError, true)

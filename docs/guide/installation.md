@@ -57,31 +57,84 @@ The volumes are kept when you stop or rebuild the container, including with `doc
 
 The desktop app bundles the editor and server into a standalone application — no Docker or Node.js required.
 
+### Linux: install with your package manager
+
+Installed this way, Parallax updates along with the rest of your system.
+
+**Ubuntu, Debian, Linux Mint** (Ubuntu 22.04 or Debian 12 and later):
+
+```bash
+sudo curl -fsSLo /etc/apt/sources.list.d/parallax.sources https://pkg.parallax-presentations.com/apt/parallax.sources
+sudo apt update
+sudo apt install parallax
+```
+
+**Fedora, RHEL:**
+
+```bash
+sudo curl -fsSLo /etc/yum.repos.d/parallax.repo https://pkg.parallax-presentations.com/rpm/parallax.repo
+sudo dnf install parallax
+```
+
+**openSUSE:**
+
+```bash
+sudo zypper addrepo https://pkg.parallax-presentations.com/rpm/parallax.repo
+sudo zypper install parallax
+```
+
+**Arch Linux:** there's no package yet, so use the [AppImage](#linux-appimage). It needs FUSE 2:
+
+```bash
+sudo pacman -S fuse2
+```
+
+To update the AppImage, download the new one from the Releases page.
+
+The APT and RPM repositories are signed with the key `DB2A DD58 7A04 3936 5354 2FDE 33AC 80B1 6F45 03EE` (Parallax Packages). The APT source file carries it; dnf and zypper show it on the first install and ask you to trust it.
+
 ### Download
 
 Go to the [Releases page](https://github.com/jbirky/parallax-presentations/releases) and download the installer for your platform:
 
 | Platform | File |
 |---|---|
-| Linux (AppImage) | `Slides-Editor-x.x.x.AppImage` |
 | Linux (Debian/Ubuntu) | `parallax_x.x.x_amd64.deb` |
-| macOS | `Slides-Editor-x.x.x.dmg` |
-| Windows | `Slides-Editor-Setup-x.x.x.exe` |
-
-### Linux AppImage
-
-```bash
-chmod +x Slides-Editor-*.AppImage
-./Slides-Editor-*.AppImage
-```
+| Linux (Fedora/openSUSE) | `parallax-x.x.x.x86_64.rpm` |
+| Linux (AppImage) | `Parallax-x.x.x-x86_64.AppImage` |
+| macOS (Apple silicon) | `Parallax-x.x.x-arm64.dmg` |
+| Windows | `Parallax.Setup.x.x.x.exe` |
 
 ### Linux .deb
 
 ```bash
-sudo dpkg -i parallax_*.deb
+sudo apt install ./parallax_*.deb
 # Then launch from your application menu or run:
 parallax
 ```
+
+The package is called `parallax`, so `sudo apt remove parallax` uninstalls it. It replaces the `revealjs-editor` package that earlier versions installed, and keeps your presentations.
+
+### Linux AppImage
+
+```bash
+chmod +x Parallax-*.AppImage
+./Parallax-*.AppImage
+```
+
+::: warning Ubuntu 24.04 and later
+The app runs every page in Chromium's sandbox, since a deck can run its author's code. On Ubuntu 24.04 and later the sandbox needs an AppArmor profile, which the .deb installs and an AppImage can't, so there the AppImage stops at startup. Install the .deb instead.
+:::
+
+### macOS
+
+Open the .dmg and drag Parallax to Applications. The app isn't signed with an Apple Developer ID yet, so the first time you open it macOS says it can't check it for malware. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Parallax, and click **Open Anyway**. After that it opens normally.
+
+The download is for Macs with Apple silicon (M1 and later).
+
+### Windows
+
+Run the installer. It isn't signed with a code-signing certificate yet, so Windows SmartScreen may warn that it doesn't recognize the app: click **More info**, then **Run anyway**.
 
 ::: tip
 On first launch the desktop app will open both the editor window and a local server on port 3002. You can also access the editor from a browser at `http://localhost:3002`.

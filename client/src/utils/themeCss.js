@@ -38,8 +38,9 @@ import downforce from '../themes/downforce.css?raw'
 import parallax from '../themes/parallax.css?raw'
 import fabrica from '../themes/fabrica.css?raw'
 import manifest from '../themes/manifest.css?raw'
+import regolith from '../themes/regolith.css?raw'
 
-const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence, quadrille, inspiral, parti, downforce, parallax, fabrica, manifest }
+const SHEETS = { bauhaus, pixel, mission, turin, gutter, lemma, beamline, kourou, ledger, preprint, transit, trace, prompt, zenith, quincunx, partition, holdout, separatrix, runlevel, fanout, cell, graticule, eigenstate, mise, valence, quadrille, inspiral, parti, downforce, parallax, fabrica, manifest, regolith }
 
 // The class a theme's stylesheet is scoped to, for a slide's container
 export function deckThemeClass(themeId) {

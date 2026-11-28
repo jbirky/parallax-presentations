@@ -41,7 +41,7 @@ describe('the landing page', () => {
     await mount()
     const words = el.querySelector('.lp-hero h1 .lp-parallax')
     expect(words.textContent).toBe('complex concepts.')
-    expect(el.querySelector('.lp-hero h1').textContent).toBe('Create interactiveand intuitive slides\u00a0forcomplex concepts.')
+    expect(el.querySelector('.lp-hero h1').textContent).toBe('Create interactive and intuitive slides\u00a0forcomplex concepts.')
     await act(async () => {
       window.dispatchEvent(new PointerEvent('pointermove', { clientX: 400, clientY: 300, pointerType: 'mouse' }))
       await new Promise(r => setTimeout(r, 100))
@@ -50,7 +50,7 @@ describe('the landing page', () => {
     expect(Number(words.style.getPropertyValue('--py'))).toBeGreaterThan(0)
     // The section and closing titles' fringed words move too
     const moving = [...el.querySelectorAll('.lp-parallax')]
-    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'Make your next talk in Parallax'])
+    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'an AI agent', 'your computer', 'Make your next talk in Parallax'])
     for (const w of moving) expect(w.style.getPropertyValue('--px')).not.toBe('')
     // And the closing mark's red and blue P's (the clip path's red P too), the red twice as far
     const eyes = [...el.querySelectorAll('.lp-cta-mark [data-eye]')]
@@ -281,12 +281,40 @@ describe('what sets Parallax apart', () => {
     expect(plans.map(p => p.querySelector('.lp-price').textContent)).toEqual(['$0', '$10', '$12', 'Custom'])
     expect(plans[1].classList.contains('lead')).toBe(true)
     const soon = plans.map(p => [...p.querySelectorAll('li')].filter(li => li.querySelector('.lp-soon')).map(li => li.textContent.replace('Coming soon', '').trim()))
-    expect(soon).toEqual([['Public links with a small badge'], ['No badge, password links, view counts'], [], ['Single sign-on, domain capture', 'Audit log']])
-    await act(async () => plans[1].querySelector('button').click())
+    expect(soon).toEqual([[], [], [], ['Single sign-on, domain capture', 'Audit log']])
+    const items = plans.map(p => [...p.querySelectorAll('li')].map(li => li.textContent.replace('Coming soon', '').trim()))
+    expect(items[0]).toContain('1 collaborator per deck')
+    expect(items[1]).toContain('Unlimited collaborators')
+    expect(items[2]).toEqual(expect.arrayContaining(['Unlimited presentations', 'Unlimited collaborators']))
+    expect(items.flat().join(' ')).not.toMatch(/badge|password links|view counts/)
+    // Pro and Team can't be bought yet: their buttons say so and do nothing
+    const ctas = plans.map(p => p.querySelector('.lp-plan-row .lp-btn'))
+    expect(ctas.map(b => b.textContent)).toEqual(['Start free', 'Coming soon', 'Coming soon', 'Talk to us'])
+    expect(ctas.map(b => b.disabled === true)).toEqual([false, true, true, false])
+    await act(async () => { ctas[1].click(); ctas[2].click() })
+    expect(onSignIn).not.toHaveBeenCalled()
+    await act(async () => ctas[0].click())
     expect(onSignIn).toHaveBeenCalledTimes(1)
-    expect(track).toHaveBeenCalledWith('sign-in', { from: 'plan-pro' })
+    expect(track).toHaveBeenCalledWith('sign-in', { from: 'plan-free' })
     expect(plans[3].querySelector('a.lp-btn').getAttribute('href')).toMatch(/^mailto:support@parallax-presentations\.com\?subject=/)
     expect(el.querySelector('.lp-selfhost a').getAttribute('href')).toBe('#docs/guide/installation')
+  })
+
+  it('shows the ways to connect an AI agent, and leads to the tutorial', async () => {
+    await mount()
+    const ways = [...el.querySelectorAll('#ai .lp-agent')]
+    expect(ways.map(w => w.querySelector('h3').textContent)).toEqual(['The Parallax plugin', 'Your account’s MCP server', 'One presentation, in a chat'])
+    expect(ways[0].classList.contains('lead')).toBe(true)
+    expect(ways[0].querySelector('pre').textContent).toContain('/plugin install parallax@parallax-agent')
+    // The server's address is this site's, as the hosted site and dev differ
+    expect(ways[1].querySelector('pre').textContent).toBe(`${window.location.origin}/mcp`)
+    expect(ways.map(w => w.querySelector('a').getAttribute('href'))).toEqual(['https://github.com/jbirky/parallax-agent', '#docs/tutorials/ai-access', '#docs/tutorials/ai-collaborators'])
+    expect(ways[0].querySelector('a').getAttribute('target')).toBe('_blank')
+    expect(el.querySelector('.lp-agents-more a').getAttribute('href')).toBe('#docs/tutorials/ai-agents')
+    // The nav and the footer lead to it
+    await act(async () => [...el.querySelectorAll('.lp-links button')].find(b => b.textContent === 'AI agents').click())
+    expect(track).toHaveBeenCalledWith('ai-agents', { from: 'nav' })
+    expect([...el.querySelectorAll('.lp-footer button')].map(b => b.textContent)).toContain('AI agents')
   })
 
   it('compares Parallax with the tools people use', async () => {

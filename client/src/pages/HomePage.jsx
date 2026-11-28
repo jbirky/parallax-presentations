@@ -5,15 +5,16 @@ import ThemeGallery from '../components/ThemeGallery'
 import { rememberDeckCount, tickStep } from '../utils/gettingStarted'
 import { ownBackground, themeBackgroundStyle, themeOf } from '../utils/themes'
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X, Lock } from 'lucide-react'
+import { Plus, Pencil, Trash2, Presentation, Copy, Sun, Moon, Layout, ExternalLink, Gauge, GitFork, Loader, HardDrive, File, Image, Film, Music, FileText, ChevronDown, ChevronUp, Search, LogOut, Mail, FileCode, Users, User, Eye, FolderInput, LayoutTemplate, X, Lock, Bot } from 'lucide-react'
 import { api } from '../utils/api'
 import { formatSize, planSummary, priceText, discountedPrice, discountText } from '../utils/plans'
 
 import { UserButton } from '@clerk/clerk-react'
 import BetaBadge from '../components/BetaBadge'
-import ParallaxMark from '../components/ParallaxMark'
+import { Wordmark } from '../components/ParallaxMark'
 import BeamerImportModal from '../components/BeamerImportModal'
 import TeamsModal from '../components/TeamsModal'
+import AiTokensModal from '../components/AiTokensModal'
 import TeamSpaceView from '../components/TeamSpaceView'
 import DeckBrowser from '../components/DeckBrowser'
 import MoveDeckModal, { teamsToAddTo } from '../components/MoveDeckModal'
@@ -66,6 +67,8 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
   // of the dashboard (shown until they've answered one), 'edit' from "About
   // you" in the account menu
   const [survey, setSurvey] = useState(null)
+  // The AI access dialog (AiTokensModal), from the account menu
+  const [aiAccess, setAiAccess] = useState(false)
   const [uploads, setUploads] = useState([])
   const [uploadsOpen, setUploadsOpen] = useState(false)
   const [uploadFilter, setUploadFilter] = useState('')
@@ -637,7 +640,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
     <div className="home-page">
       <div className="home-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h1 className="home-logo"><ParallaxMark id="home" size={28} ink="var(--text-primary)" /><span>Parallax</span><BetaBadge /></h1>
+          <h1 className="home-logo"><Wordmark id="home" ink="var(--text-primary)" /><BetaBadge /></h1>
           <a href="/" target="_blank" rel="noopener noreferrer" title="Landing page" className="home-link">
             <ExternalLink size={12} /> Site
           </a>
@@ -697,6 +700,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
                   <UserButton.Action label="Manage subscription" labelIcon={<span style={{ fontSize: 14 }}>&#x2699;</span>} onClick={openBillingModal} />
                 )}
                 <UserButton.Action label="About you" labelIcon={<User size={14} />} onClick={() => setSurvey('edit')} />
+                <UserButton.Action label="AI access" labelIcon={<Bot size={14} />} onClick={() => setAiAccess(true)} />
               </UserButton.MenuItems>
             </UserButton>
           )}
@@ -1219,6 +1223,7 @@ export default function HomePage({ onOpen, theme, onToggleTheme, initialSlug }) 
 
       {/* Billing modal */}
       {survey && <SignupSurvey firstTime={survey === 'first'} onClose={closeSurvey} />}
+      {aiAccess && <AiTokensModal onClose={() => setAiAccess(false)} />}
 
       {showBillingModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => setShowBillingModal(false)}>

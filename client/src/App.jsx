@@ -11,7 +11,7 @@ import TeamJoinPage from './pages/TeamJoinPage'
 import PluginInstallPage from './pages/PluginInstallPage'
 import DocsPage from './components/DocsPage'
 import { setTokenGetter } from './utils/api'
-import { chosenTheme, defaultTheme, saveTheme } from './utils/theme'
+import { chosenTheme, defaultTheme, saveTheme, themeSurface } from './utils/theme'
 import BetaBadge from './components/BetaBadge'
 
 const isCloud = import.meta.env.VITE_PARALLAX_MODE === 'cloud'
@@ -121,7 +121,8 @@ export default function App() {
   const [presentationId, setPresentationId] = useState(null)
   const [isTemplate, setIsTemplate] = useState(false)
   // See utils/theme.js
-  const [chosen, setChosen] = useState(() => chosenTheme())
+  const [surface] = useState(() => themeSurface(isCloud))
+  const [chosen, setChosen] = useState(() => chosenTheme(surface, { isCloud }))
   const theme = chosen || defaultTheme(isCloud)
   const [docsOverlay, setDocsOverlay] = useState(null)
   const [initialSlug, setInitialSlug] = useState(() => {
@@ -137,7 +138,7 @@ export default function App() {
 
   const pickTheme = next => {
     setChosen(next)
-    saveTheme(next)
+    saveTheme(surface, next)
   }
 
   useEffect(() => {

@@ -16,6 +16,12 @@ const SUPPORT = 'support@parallax-presentations.com'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
+// What a frame around a deck page lets it do. The deck page is sandboxed
+// (DECK_PAGE_SANDBOX in index.js), so its origin is opaque, and a bare
+// "fullscreen" grants only the frame's src origin, which that never
+// matches: its Fullscreen button was refused. "*" reaches it.
+const DECK_FRAME_ALLOW = 'fullscreen *'
+
 // Words an admin typed, ending as a sentence does, to go before another
 const sentence = s => (/[.!?…]['’"”)]?$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)
 
@@ -80,14 +86,18 @@ function sitemapXml({ origin, examples, templates = [], plugins = [] }) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map(u => `  <url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`
 }
 
-// Light or dark, as the visitor chose on this site (the app keeps the choice
-// in localStorage, utils/theme.js): dark unless light was chosen. Set before
-// the page draws, so it doesn't show the other one first.
-const THEME_EARLY = "try { var t = localStorage.getItem('parallax-theme'); if (t !== 'light' && t !== 'dark') t = localStorage.getItem('editor-theme') === 'light' ? 'light' : null; if (t) document.documentElement.setAttribute('data-theme', t) } catch (e) {}"
+// Light or dark, as the visitor chose on the site's pages: the landing page
+// and these share a choice in localStorage, apart from the dashboard's and
+// the editor's (utils/theme.js, the 'site' surface). Dark unless light was
+// chosen. Set before the page draws, so it doesn't show the other one first.
+const THEME_EARLY = "try { var t = localStorage.getItem('parallax-site-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t) } catch (e) {}"
 // The mark, as on the landing page: the P as each eye sees it, red and
 // blue, and where they overlap in the page's ink
 const MARK_P = 'M26 18H56A22 22 0 0 1 56 62H42V82H26ZM42 32H55A8 8 0 0 1 55 48H42Z'
-const MARK = `<svg width="30" height="30" viewBox="14 14 72 72" aria-hidden="true" focusable="false"><defs><clipPath id="mark-clip"><path d="${MARK_P}" transform="translate(-6 0)" clip-rule="evenodd"/></clipPath></defs>`
+// The mark as the P of the wordmark: its box fits the glyphs, so at a
+// capital's height (0.69em of Archivo) on the baseline it reads as the first
+// letter (as client/src/components/ParallaxMark.jsx Wordmark has it)
+const MARK = `<svg class="wm-p" viewBox="18 18 64 64" aria-hidden="true" focusable="false"><defs><clipPath id="mark-clip"><path d="${MARK_P}" transform="translate(-6 0)" clip-rule="evenodd"/></clipPath></defs>`
   + `<g transform="translate(-2 0)" fill-rule="evenodd"><path d="${MARK_P}" transform="translate(-6 0)" fill="#ee2b2b"/><path d="${MARK_P}" transform="translate(6 0)" fill="#1e60ff"/>`
   + `<g clip-path="url(#mark-clip)"><path d="${MARK_P}" transform="translate(6 0)" style="fill: var(--text)"/></g></g></svg>`
 // The header's toggle: a sun to go light, a moon to go dark
@@ -103,7 +113,7 @@ const THEME_TOGGLE = `(function () {
       button.addEventListener('click', function () {
         var theme = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light'
         root.setAttribute('data-theme', theme)
-        try { localStorage.setItem('parallax-theme', theme) } catch (e) {}
+        try { localStorage.setItem('parallax-site-theme', theme) } catch (e) {}
         label()
       })
       label()
@@ -156,8 +166,9 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
       header { border-bottom: 1px solid var(--line); background: var(--nav-bg); position: sticky; top: 0; z-index: 5; backdrop-filter: blur(10px); }
       header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
       .logo { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; white-space: nowrap; }
-      .logo svg { display: block; flex: none; }
-      .logo .word { font: 800 22px/1 var(--display); letter-spacing: -0.035em; }
+      .logo .wm { display: inline-flex; align-items: baseline; font: 800 28px/1 var(--display); letter-spacing: -0.035em; }
+      .logo .wm-p { display: block; flex: none; width: 0.69em; height: 0.69em; margin-right: 0.05em; }
+      .vh { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
       .beta { padding: 3px 6px; font: 700 10px/1.2 Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--bg); background: var(--text); }
       nav { display: flex; align-items: center; gap: 2px; }
       nav a { padding: 12px 10px; color: var(--text); font-size: 14.5px; font-weight: 500; text-decoration: none; text-underline-offset: 7px; text-decoration-thickness: 2px; white-space: nowrap; }
@@ -197,17 +208,17 @@ function sitePage({ meta, analytics, nav = [], end = ['/', 'Parallax home'], mai
       @media (max-width: 680px) { nav .hide { display: none; } }
       @media (max-width: 960px) { nav .wide { display: none; } }
       @media (max-width: 600px) { nav .mid { display: none; } }
-      @media (max-width: 520px) { .beta { display: none; } .logo svg { width: 28px; height: 28px; } .logo .word { font-size: 20px; } nav a { padding-inline: 7px; } nav .btn { margin-left: 4px; padding-inline: 12px; } }
-      @media (max-width: 420px) { header .wrap, .logo { gap: 8px; } .logo svg { width: 26px; height: 26px; } .logo .word { font-size: 19px; } .beta { display: none; } nav a { padding-inline: 6px; font-size: 14px; } .theme { width: 30px; } nav .btn { margin-left: 2px; padding-inline: 10px; } }
+      @media (max-width: 520px) { .beta { display: none; } .logo .wm { font-size: 25px; } nav a { padding-inline: 7px; } nav .btn { margin-left: 4px; padding-inline: 12px; } }
+      @media (max-width: 420px) { header .wrap, .logo { gap: 8px; } .logo .wm { font-size: 23px; } .beta { display: none; } nav a { padding-inline: 6px; font-size: 14px; } .theme { width: 30px; } nav .btn { margin-left: 2px; padding-inline: 10px; } }
       @media (max-width: 370px) { nav a { padding-inline: 5px; } nav .btn { padding-inline: 8px; } }
       /* The smallest phones: the mark alone (its link still says Parallax) */
-      @media (max-width: 359px) { .logo .word { display: none; } }${styles ? `\n      ${styles.trim().split('\n').map(l => l.trim()).join('\n      ')}` : ''}
+      @media (max-width: 359px) { .logo .word { display: none; } .logo .wm-p { width: 24px; height: 24px; margin: 0; } }${styles ? `\n      ${styles.trim().split('\n').map(l => l.trim()).join('\n      ')}` : ''}
     </style>
   </head>
   <body>
     <header>
       <div class="wrap">
-        <a class="logo" href="/" aria-label="Parallax">${MARK}<span class="word">Parallax</span><span class="beta">Beta</span></a>
+        <a class="logo" href="/" aria-label="Parallax"><span class="wm">${MARK}<span class="word"><span class="vh">P</span>arallax</span></span><span class="beta">Beta</span></a>
         <nav aria-label="Main">
           ${[...links, THEME_BUTTON, `<a class="btn" href="${esc(end[0])}">${esc(end[1])}</a>`].join('\n          ')}
         </nav>
@@ -242,6 +253,7 @@ const LANDING_TABS = [
   { href: '/#templates', text: 'Templates' },
   { href: '/plugins', text: 'Plugins', hide: 'wide' },
   { href: '/#workflow', text: 'How it works', hide: 'wide' },
+  { href: '/#ai', text: 'AI agents', hide: 'wide' },
   { href: '/#docs', text: 'Docs' },
   { href: 'https://github.com/jbirky/parallax-presentations', text: 'GitHub', hide: 'wide', external: true },
 ]
@@ -300,7 +312,7 @@ function examplePage({ origin, example: e, others, guestEnabled, analytics, inde
       <h1>${esc(e.title)}</h1>
       ${e.desc ? `<p class="lead">${esc(e.desc)}</p>` : ''}
       ${e.tags?.length ? `<div class="tags">${e.tags.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
-      <div class="stage"><div class="slide" id="slide"><iframe src="/examples/${esc(e.slug)}/deck" title="${esc(e.title)}, a live Parallax deck" allow="fullscreen"></iframe></div></div>
+      <div class="stage"><div class="slide" id="slide"><iframe src="/examples/${esc(e.slug)}/deck" title="${esc(e.title)}, a live Parallax deck" allow="${DECK_FRAME_ALLOW}"></iframe></div></div>
       <p class="hint">A live deck, as it’s presented. Click the slide, then press <kbd>→</kbd> to step through it and <kbd>←</kbd> to go back.</p>
       <div class="actions">
         ${editor}
@@ -406,7 +418,7 @@ function templatePage({ origin, template: t, facts, others, guestEnabled, analyt
       ${t.tags?.length ? `<div class="tags">${t.tags.map(x => `<span>${esc(x)}</span>`).join('')}</div>` : ''}
       <div class="tp-layout">
         <div class="tp-main">
-          <div class="stage"><div class="slide" id="slide"><iframe id="deck" src="/examples/${slug}/deck" title="${esc(t.title)}, a live Parallax deck" allow="fullscreen"></iframe></div></div>
+          <div class="stage"><div class="slide" id="slide"><iframe id="deck" src="/examples/${slug}/deck" title="${esc(t.title)}, a live Parallax deck" allow="${DECK_FRAME_ALLOW}"></iframe></div></div>
           <div class="tp-controls">
             <button type="button" class="btn" id="tp-prev">← Back</button>
             <div class="tp-where" aria-live="polite"><span id="tp-num">1 / ${slides.length}</span><span id="tp-name">${esc(slides[0]?.title || '')}</span></div>

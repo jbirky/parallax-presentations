@@ -10,7 +10,7 @@ import { api } from '../utils/api'
 import { ColumnChart, LineChart } from '../components/AdminCharts'
 import PluginReviewPanel from '../components/PluginReviewPanel'
 import AdminTeamsPanel from '../components/AdminTeamsPanel'
-import ParallaxMark from '../components/ParallaxMark'
+import { Wordmark } from '../components/ParallaxMark'
 import * as ui from '../components/adminStyles'
 import { formatSize, planSummary, priceText } from '../utils/plans'
 
@@ -1268,7 +1268,7 @@ export default function AdminPage({ theme, onToggleTheme }) {
   return (
     <div className="admin-page" style={styles.page}>
       <header className="admin-header">
-        <a href="/dashboard" className="admin-logo" title="Your dashboard"><ParallaxMark id="admin" size={28} ink="var(--text-primary)" /><span>Parallax</span></a>
+        <a href="/dashboard" className="admin-logo" title="Your dashboard"><Wordmark id="admin" ink="var(--text-primary)" /></a>
         <div className="admin-header-tools">
           {data && <span>Updated {formatClock(data.generatedAt)}</span>}
           <button className="btn btn-secondary" onClick={load} disabled={refreshing}>

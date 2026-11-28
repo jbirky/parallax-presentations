@@ -50,6 +50,8 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/venn\.jpg" \/>/)
     assert.match(html, /<meta property="og:image:width" content="960" \/>/)
     assert.match(html, /<iframe src="\/examples\/venn\/deck"/)
+    // The deck page is sandboxed (an opaque origin): only "*" lets its Fullscreen button work
+    assert.match(html, /<iframe src="\/examples\/venn\/deck"[^>]* allow="fullscreen \*"/)
     assert.match(html, /<a class="btn primary" href="\/try\?example=venn" data-umami-event="example-to-editor"/)
     assert.match(html, /<script defer src="\/stats\/script\.js" data-website-id="w-1" data-do-not-track="true"><\/script>/)
     // Another example without a thumbnail shows its title
@@ -74,6 +76,7 @@ describe('what link previews and search engines see', () => {
     assert.match(html, /<link rel="canonical" href="https:\/\/parallax-presentations\.com\/templates\/lecture" \/>/)
     assert.match(html, /<meta property="og:image" content="https:\/\/parallax-presentations\.com\/examples\/thumbs\/lecture\.jpg" \/>/)
     assert.match(html, /<iframe id="deck" src="\/examples\/lecture\/deck"/)
+    assert.match(html, /<iframe id="deck" src="\/examples\/lecture\/deck"[^>]* allow="fullscreen \*"/)
     assert.match(html, /<a class="btn primary" href="\/templates\/lecture\/use" data-umami-event="template-to-account"/)
     assert.match(html, /href="\/try\?example=lecture"/)
     // Every slide, to jump to, on its own color until it's drawn
@@ -98,7 +101,7 @@ describe('what link previews and search engines see', () => {
       const nav = html.match(/<nav aria-label="Main">([\s\S]*?)<\/nav>/)[1]
       return { nav, tabs: [...nav.matchAll(/<a[^>]*>([^<]+)<\/a>/g)].map(m => m[1]) }
     }
-    const landing = ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'Docs', 'GitHub', 'Sign in']
+    const landing = ['Features', 'Examples', 'Templates', 'Plugins', 'How it works', 'AI agents', 'Docs', 'GitHub', 'Sign in']
     const ex = tabsOf(examplePage({ origin, example, others: [], guestEnabled: true, analytics: null, index: false, cloud: true }))
     assert.deepEqual(ex.tabs, landing)
     assert.match(ex.nav, /<a class="mid" href="\/#examples" aria-current="true">Examples<\/a>/)
@@ -117,10 +120,12 @@ describe('what link previews and search engines see', () => {
     const html = examplePage({ origin, example, others: [], guestEnabled: false, analytics: null, index: false })
     // The choice is read before the page draws, in the head
     const head = html.slice(0, html.indexOf('</head>'))
-    assert.match(head, /localStorage\.getItem\('parallax-theme'\)/)
+    assert.match(head, /localStorage\.getItem\('parallax-site-theme'\)/)
     assert.match(head, /:root\[data-theme="light"\] \{ color-scheme: light;/)
     assert.match(html, /<button type="button" class="theme" id="theme-toggle" aria-label="Switch to light theme"/)
-    assert.match(html, /localStorage\.setItem\('parallax-theme', theme\)/)
+    assert.match(html, /localStorage\.setItem\('parallax-site-theme', theme\)/)
+    // Its own choice, not the dashboard's and the editor's
+    assert.doesNotMatch(html, /'parallax-theme'|parallax-app-theme|editor-theme/)
     // The toggle sits in the header, before the link home
     assert.ok(html.indexOf('id="theme-toggle"') < html.indexOf('>Parallax home</a>'))
   })

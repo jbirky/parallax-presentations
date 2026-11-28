@@ -328,6 +328,10 @@ export const api = {
   createAiLink: (id, { name, days }) => authFetch(`${BASE}/presentations/${id}/ai-links`, json('POST', { name, days })).then(r => checked(r, 'Failed')),
   renewAiLink: (id, linkId, days) => authFetch(`${BASE}/presentations/${id}/ai-links/${linkId}/renew`, json('POST', { days })).then(r => checked(r, 'Failed')),
   revokeAiLink: (id, linkId) => authFetch(`${BASE}/presentations/${id}/ai-links/${linkId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
+  getAiTokens: () => authFetch(`${BASE}/me/ai-tokens`).then(r => checked(r, 'Failed')),
+  createAiToken: ({ name, days, scopes }) => authFetch(`${BASE}/me/ai-tokens`, json('POST', { name, days, scopes })).then(r => checked(r, 'Failed')),
+  revokeAiToken: (tokenId) => authFetch(`${BASE}/me/ai-tokens/${tokenId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
+  allowAiApp: (appId) => authFetch(`${BASE}/me/ai-tokens/${appId}/allow`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
   getPresentationDatasetData: (pid, datasetId, params = {}) => {
     const qs = new URLSearchParams(params).toString()

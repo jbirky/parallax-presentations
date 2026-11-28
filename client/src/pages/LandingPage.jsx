@@ -7,7 +7,8 @@
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
 // together, a demo for each step (StepDemos.jsx), the elements by
-// subject, the plans, and a last way in. Ink and paper bands, the mark's red
+// subject, the ways to connect an AI agent, the plans, how to install the
+// desktop app (components/landing/InstallSteps.jsx), and a last way in. Ink and paper bands, the mark's red
 // and blue as offset shadows (index.css, Landing Page). It's dark unless
 // light is chosen, with the nav's toggle or the dashboard's (theme,
 // onToggleTheme; utils/theme.js). The docs
@@ -22,11 +23,12 @@ import { useState, useEffect, useRef } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Moon, Sun, X } from 'lucide-react'
 import DocsPage from '../components/DocsPage'
 import BetaBadge from '../components/BetaBadge'
-import Mark from '../components/ParallaxMark'
+import Mark, { Wordmark } from '../components/ParallaxMark'
 import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import WorkflowSteps from '../components/landing/StepDemos'
+import InstallSteps from '../components/landing/InstallSteps'
 import { api } from '../utils/api'
 import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
@@ -51,7 +53,7 @@ const COMPARISON = [
 const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
 // The home tab's sections an address can name, as in /#examples
-const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'start']
+const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'ai', 'start', 'install']
 
 // The built-in examples, as the server lists them
 const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
@@ -64,21 +66,22 @@ const placeholderBg = bg => (bg?.type === 'color' && bg.color) || (bg?.type === 
 
 // The plans and what they cost (the pricing plan; their limits are the
 // plans table's, server/services/plans.js, which /admin edits, so change
-// both together). An item marked `soon` isn't built yet and says so. Pro is
-// the lead card, in ink.
+// both together). An item marked `soon` isn't built yet and says so; a plan
+// marked `soon` can't be bought yet, so its button says so and does nothing.
+// Pro is the lead card, in ink.
 const PLANS = [
   {
     id: 'free', name: 'Free', price: '$0', note: 'For trying it, and for good', cta: 'Start free',
-    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['Public links with a small badge', 'soon']],
+    items: [['5 editable presentations; older ones read-only'], ['250 MB of storage'], ['1 live dataset, updated daily'], ['1 collaborator per deck']],
   },
   {
-    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Go Pro',
+    id: 'pro', name: 'Pro', price: '$10', lead: true, cta: 'Coming soon', soon: true,
     note: 'a month, or $8 billed yearly. Students and educators: $5, or $4 yearly',
-    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['No badge, password links, view counts', 'soon']],
+    items: [['Unlimited presentations'], ['10 GB of storage'], ['25 live datasets, updated hourly'], ['Unlimited collaborators']],
   },
   {
-    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Set up a team',
-    items: [['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Team themes, fonts, data and templates']],
+    id: 'team', name: 'Team', price: '$12', note: 'a seat a month, 3 seats or more, less yearly', cta: 'Coming soon', soon: true,
+    items: [['Unlimited presentations'], ['Shared folders and roles'], ['25 GB a seat, pooled'], ['100 live datasets, shared'], ['Unlimited collaborators'], ['Team themes, fonts, data and templates']],
   },
   {
     id: 'institution', name: 'Institution', price: 'Custom', note: 'An annual department or campus license', cta: 'Talk to us',
@@ -86,6 +89,32 @@ const PLANS = [
     items: [['Single sign-on, domain capture', 'soon'], ['Audit log', 'soon'], ['Invoices and purchase orders'], ['Custom storage and data'], ['Support agreement']],
   },
 ]
+
+// The ways to connect an AI agent (#ai): what each reaches, what to type
+// (given the site's address, as the hosted site and dev differ) and where to
+// read more; the plugin for Claude (github.com/jbirky/parallax-agent) leads.
+// The tutorial is docs/tutorials/ai-agents.md.
+const AGENT_WAYS = [
+  {
+    id: 'plugin', label: 'Claude', name: 'The Parallax plugin', lead: true,
+    note: 'For claude.ai, Cowork and Claude Code. Sign in with your Parallax account, and Claude knows how a talk comes together: an outline with minutes first, a talk from an arXiv paper with its figures, a review of a whole deck.',
+    code: () => '/plugin marketplace add jbirky/parallax-agent\n/plugin install parallax@parallax-agent\n/parallax:from-paper 2305.16790 12',
+    link: ['The plugin on GitHub', 'https://github.com/jbirky/parallax-agent'],
+  },
+  {
+    id: 'mcp', label: 'ChatGPT and other MCP apps', name: 'Your account’s MCP server',
+    note: 'Add it as a connector and sign in with your Parallax account. For a script, make an AI access token from your avatar menu and send it as a header.',
+    code: site => `${site}/mcp`,
+    link: ['AI access', '#docs/tutorials/ai-access'],
+  },
+  {
+    id: 'link', label: 'Claude and ChatGPT', name: 'One presentation, in a chat',
+    note: 'Share › AI collaborator link… gives a chat app one presentation to work on with you, with no token.',
+    code: site => `${site}/mcp/plx_…`,
+    link: ['AI collaborator links', '#docs/tutorials/ai-collaborators'],
+  },
+]
+const AGENTS_TUTORIAL = '#docs/tutorials/ai-agents'
 
 // Words whose red and blue copies sit at two depths behind the ink, so they
 // shift against the pointer (usePointerDepth): the red, farthest back, most,
@@ -230,7 +259,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     <div className="landing-page">
       <nav className="lp-nav" aria-label="Main">
         <div className="lp-wrap lp-nav-row">
-          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="nav" size={32} /><span className="lp-word">Parallax</span><BetaBadge /></button>
+          <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Wordmark id="nav" wordClass="lp-word" /><BetaBadge /></button>
           <div className="lp-links">
             <button type="button" className="lp-wide" onClick={() => goTo('features')}>Features</button>
             {/* On a phone, Templates takes its place; the hero's See the examples leads there */}
@@ -240,6 +269,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             )}
             <a className="lp-wide" href="/plugins" onClick={() => track('plugins', { from: 'nav' })}>Plugins</a>
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
+            <button type="button" className="lp-wide" onClick={() => { track('ai-agents', { from: 'nav' }); goTo('ai') }}>AI agents</button>
             <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
             <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'nav' })}>GitHub</a>
             {onToggleTheme && (
@@ -258,7 +288,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
         ) : tab === 'templates' ? (
-          <section className="lp-band lp-light alt lp-templates" id="templates" aria-labelledby="lp-templates">
+          <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-templates">Templates</h2>
@@ -299,7 +329,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         ) : (<>
           <header className="lp-hero lp-wrap" id="top">
             <div className="lp-eyebrow">Slides for research talks, lectures and seminars</div>
-            <h1>Create interactive<br />and intuitive slides&nbsp;for<br /><ParallaxWords>complex concepts.</ParallaxWords></h1>
+            <h1>Create interactive and intuitive slides&nbsp;for<br /><ParallaxWords>complex concepts.</ParallaxWords></h1>
             <div className="lp-ctas">
               {tryIt('hero')}
               <button type="button" className="lp-btn ghost" onClick={() => { track('see-examples'); goTo('examples') }}>See the examples</button>
@@ -389,11 +419,40 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
+          <section className="lp-band lp-agents-band" id="ai" aria-labelledby="lp-ai">
+            <div className="lp-wrap">
+              <div className="lp-head lp-head-wide">
+                <div className="lp-label">With AI</div>
+                <h2 id="lp-ai">Build a talk with <ParallaxWords>an AI agent</ParallaxWords></h2>
+                <p>Connect Claude or ChatGPT to Parallax. The agent outlines the talk with you, builds the slides while you watch in the editor, and checks each one. It runs in your own AI app; Parallax gives it the tools, and saves a version first so you can undo its work.</p>
+              </div>
+              <div className="lp-agents">
+                {AGENT_WAYS.map(way => (
+                  <div key={way.id} className={way.lead ? 'lp-agent lead' : 'lp-agent'}>
+                    <div className="lp-label">{way.label}</div>
+                    <h3>{way.name}</h3>
+                    <p>{way.note}</p>
+                    <pre><code>{way.code(window.location.origin)}</code></pre>
+                    <a className="lp-quiet" href={way.link[1]} {...(way.link[1].startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                      onClick={() => track('ai-agents', { from: way.id })}>{way.link[0]}</a>
+                  </div>
+                ))}
+              </div>
+              <div className="lp-agents-more">
+                <div>
+                  <div className="lp-label">Tutorial</div>
+                  <p>Install the plugin, then build a talk, turn a paper into one, and review a deck, step by step.</p>
+                </div>
+                <a className="lp-btn primary" href={AGENTS_TUTORIAL} onClick={() => track('ai-agents', { from: 'tutorial' })}>Read the tutorial <ArrowRight size={16} /></a>
+              </div>
+            </div>
+          </section>
+
           <section className="lp-band lp-light alt" id="start" aria-labelledby="lp-start">
             <div className="lp-wrap">
               <div className="lp-head">
-                <h2 id="lp-start">Start free, or run it yourself</h2>
-                <p>Use Parallax here, or install it on your own server. It’s the same open-source editor either way.</p>
+                <h2 id="lp-start">Sign up or self host</h2>
+                <p>Sign up for an account on our servers, or host it on your own server for free. For online presentations and collaborative editing.</p>
               </div>
               <div className="lp-plans">
                 {PLANS.map(plan => (
@@ -405,6 +464,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                     <div className="lp-plan-row">
                       {plan.href
                         ? <a className="lp-btn ghost" href={plan.href} onClick={() => track('contact', { from: `plan-${plan.id}` })}>{plan.cta}</a>
+                        : plan.soon
+                        ? <button type="button" className="lp-btn ghost" disabled>{plan.cta}</button>
                         : <button type="button" className={plan.lead ? 'lp-btn primary' : 'lp-btn ghost'} onClick={() => { track('sign-in', { from: `plan-${plan.id}` }); onSignIn() }}>{plan.cta}</button>}
                       {plan.id === 'free' && guestEnabled && <a className="lp-quiet" href="/try" onClick={() => track('try', { from: 'plans' })}>or try it without an account</a>}
                     </div>
@@ -418,6 +479,17 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                 </div>
                 <a className="lp-btn primary" href="#docs/guide/installation" onClick={() => track('self-hosting-guide')}>Self-hosting guide</a>
               </div>
+            </div>
+          </section>
+
+          <section className="lp-band lp-light" id="install" aria-labelledby="lp-install">
+            <div className="lp-wrap">
+              <div className="lp-head lp-head-line">
+                <div className="lp-label">Desktop app</div>
+                <h2 id="lp-install">Install Parallax on <ParallaxWords>your computer</ParallaxWords></h2>
+                <p>Install the standalone app on macOS, Windows, or Linux. Free and open source, with no account, for offline editing.</p>
+              </div>
+              <InstallSteps />
             </div>
           </section>
 
@@ -440,7 +512,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-footer-cols">
                 <div>
-                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Mark id="footer" size={30} /><span className="lp-word">Parallax</span><BetaBadge /></button>
+                  <button type="button" className="lp-logo" aria-label="Parallax" onClick={() => goTo('top')}><Wordmark id="footer" wordClass="lp-word" /><BetaBadge /></button>
                   <p>Parallax is in beta, so features may change. Tell us what breaks and what you’d like next.</p>
                 </div>
                 <div><h4>Product</h4><ul>
@@ -448,6 +520,8 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                   <li><button type="button" onClick={() => goTo('examples')}>Examples</button></li>
                   {templates.length > 0 && <li><button type="button" onClick={() => { track('templates', { from: 'footer' }); switchTab('templates') }}>Templates</button></li>}
                   <li><button type="button" onClick={() => goTo('workflow')}>How it works</button></li>
+                  <li><button type="button" onClick={() => { track('ai-agents', { from: 'footer' }); goTo('ai') }}>AI agents</button></li>
+                  <li><button type="button" onClick={() => { track('install', { from: 'footer' }); goTo('install') }}>Download</button></li>
                   <li><button type="button" onClick={() => { track('docs', { from: 'footer' }); switchTab('docs') }}>Docs</button></li>
                 </ul></div>
                 <div><h4>Project</h4><ul>

@@ -702,6 +702,7 @@ export default function Toolbar({
               <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
               <option value="'Big Shoulders Display', sans-serif">Big Shoulders</option>
               <option value="'Big Shoulders Stencil Display', sans-serif">Big Shoulders Stencil</option>
+              <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
               <option value="Codystar, sans-serif">Codystar</option>
               <option value="'National Park', sans-serif">National Park</option>
               <option value="'Futura PT', Futura, 'Century Gothic', sans-serif">Futura</option>
