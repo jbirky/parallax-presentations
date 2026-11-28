@@ -57,6 +57,26 @@ Two optional keys tune the form. Keys that start with `$` aren't shown as fields
 
 Set text with `textContent`, not `innerHTML`, so a `<` typed into the form shows as itself.
 
+### Building it click by click
+
+An embed can build up as you click through its slide, as Parallax's own diagrams do. In the right panel, set **Steps** to the number of clicks it takes, and **First step at slide step** if other things on the slide appear first. Its script hears the clicks through `parallax`:
+
+```html
+<script>
+  parallax.onStep((step, from) => {
+    // 0 before the first click, up to the number of steps
+    document.querySelector('#tangent').style.opacity = step >= 1 ? 1 : 0
+  })
+  parallax.onShow(() => startMoving())   // its slide came up
+  parallax.onHide(() => stopMoving())    // its slide was left
+</script>
+```
+
+- Draw what each step looks like, whatever step came before: stepping back onto a slide jumps straight to its last step.
+- A presentation loads every slide's embeds when it opens, so start an animation in `onShow`, not when the page loads.
+- In the editor, the embed is shown at its last step.
+- `parallax.step`, `parallax.steps` and `parallax.shown` say where it is now.
+
 ## p5.js sketches
 
 1. Open **Insert** in the toolbar and, under **Embed**, click **p5.js**.
@@ -75,4 +95,5 @@ Set text with `textContent`, not `innerHTML`, so a `<` typed into the form shows
 - HTML embeds receive `EMBED_WIDTH` and `EMBED_HEIGHT` as JavaScript globals — use them to size your canvas responsively.
 - Press the **Preview Slide** button in the right panel to test your embed in present mode without navigating through the full deck.
 - Embeds support mouse interaction in present mode — hover effects, click handlers, and scroll all work inside the iframe.
+- A blank embed usually means its script failed. Your browser's console shows why, and an AI agent's `render_slide` lists the errors, with their lines, and any library that didn't load.
 - HTML embeds and p5 sketches can read the deck's datasets with `parallax.datasets.query("name")`, in the editor and when presented. See [Live Datasets](./live-datasets.md#datasets-in-html-p5-and-plugin-elements).

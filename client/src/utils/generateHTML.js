@@ -13,6 +13,7 @@ import { modelViewerHtml } from './modelViewer'
 import { moleculeViewerHtml } from './moleculeViewer'
 import { graphPageHtml, graphStepMarkers, hasGraphs, GRAPH_DECK_SCRIPT } from './graphPage'
 import { deckDataOf, deckDatasetsScript, hasEmbeds, EMBED_DATASETS_SCRIPT } from './deckData'
+import { embedPage, htmlEmbedModel, htmlEmbedStepMarkers, EMBED_PROBLEMS_SCRIPT, HTML_EMBED_DECK_SCRIPT } from './embedRuntime'
 import { equationConfigAttr, equationStepMarkers, equationSteps, equationDeckScript, equationPrintScript, hasEquations } from './equationTerms'
 import { tikzDiagramSvg } from './tikzDiagram'
 import { feynmanSvg, feynmanStepMarkers, feynmanSteps, feynmanStepAt, hasFeynman } from './feynmanDiagram'
@@ -84,18 +85,12 @@ const EMBED_KEYS_SCRIPT = `
 `
 const hasHtmlEmbeds = presentation => (presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'html'))
 
-// withDatasets: the page gets parallax.datasets, which the deck answers
-function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
+// withDatasets: the page gets parallax.datasets, which the deck answers.
+// steps: how many of the slide's clicks it takes (utils/embedRuntime.js)
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false, steps = 0) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : '')
-  if (/<head[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<head[^>]*>/i, m => m + injection)
-  if (/<html[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<html[^>]*>/i, m => m + injection)
-  if (/<!doctype[^>]*>/i.test(userHtml))
-    return userHtml.replace(/(<!doctype[^>]*>)/i, '$1' + injection)
-  return injection + userHtml
+  return embedPage(userHtml, initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : ''), { steps, inDeck: true })
 }
 
 // Uploads' URLs made absolute in the browser, where decks open in windows of
@@ -473,9 +468,10 @@ export function generateRevealHTML(presentation, opts = {}) {
           return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs}${harmonicsDeckAttrs(el)} style="${style}"></div>`
         }
         if (el.type === 'html') {
-          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData)
+          const embedHtml = buildHtmlEmbed(el.content || '', el.width, el.height, offersData, htmlEmbedModel(el).steps)
           const srcdoc = embedHtml.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
-          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed></iframe></div>`
+          // data-html-embed: the element, for its steps and what it reports (utils/embedRuntime.js)
+          return `<div${dataId}${fragClass}${fragIdx}${enterAttrs}${actionAttrs} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed="${String(el.id || '').replace(/[^A-Za-z0-9_-]/g, '')}"></iframe></div>`
         }
         if (el.type === 'graph') {
           const srcdoc = graphPageHtml(el, { ...(deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}), stability: palette }).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
@@ -794,7 +790,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     const scrollAttr = axis === 'x' ? ` data-scroll-width="${canvasW}"` : axis === 'y' ? ` data-scroll-height="${canvasH}"` : ''
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : ''
     // With the steps that put elements in states (utils/clickActions.js)
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide)
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide) + htmlEmbedStepMarkers(slide)
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? '' : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>\n${bodyHtml}\n${footerHtml}\n${gridHtml}\n${sideCitationsHtml}\n      ${notes}\n    </section>`)
   })
   const scrollingDeck = hasScrollingSlides(presentation)
@@ -935,7 +931,7 @@ export function generateRevealHTML(presentation, opts = {}) {
     #overview-panel .ov-thumb.active { border-color:rgba(99,102,241,0.9);box-shadow:0 0 12px rgba(99,102,241,0.35); }
     #overview-panel .ov-thumb-num { position:absolute;top:3px;left:3px;font-size:9px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;font-family:-apple-system,sans-serif;z-index:2; }
   </style>${themeStyleTag(theme, presentation.themeColors)}${themeCssTag(presentation.themeCss)}${presentation.customCSS ? `\n  <style>\n${sanitizeCustomCSS(presentation.customCSS)}\n  </style>` : ''}
-${offersData ? deckDatasetsScript(deckData.datasets) : ''}
+${offersData ? deckDatasetsScript(deckData.datasets) : ''}${hasHtmlEmbeds(presentation) ? EMBED_PROBLEMS_SCRIPT : ''}
 </head>
 <body>
   <div class="${['reveal', deckThemeClass(theme)].filter(Boolean).join(' ')}">
@@ -1160,7 +1156,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ''}${scrollingDeck ? SCROLLING_SCRIPT : ''}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ''}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT + HTML_EMBED_DECK_SCRIPT : ''}${hasEquations(presentation) ? equationDeckScript() : ''}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ''}${hasPeriodic(presentation) ? periodicDeckScript() : ''}${hasGeometry(presentation) ? geometryDeckScript() : ''}${hasHarmonics(presentation) ? harmonicsDeckScript() : ''}${(presentation.slides || []).some(s => (s.elements || []).some(el => el.type === 'graph' || el.type === 'model' || el.type === 'molecule')) ? EMBED_SCALE_SCRIPT : ''}
 
 ${(() => {
   const overviewLayout = presentation.overviewLayout || 'linear'

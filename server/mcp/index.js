@@ -537,6 +537,15 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     return text(lines.join('\n'))
   }
 
+  // What HTML embeds reported while their slides were drawn
+  // (slide-thumbnail.js), by slide number and element
+  function embedProblemsText(deck, problems) {
+    const numbers = new Map(format.shownSlides(deck).map(({ slide, number }) => [String(slide.id), number]))
+    const lines = problems.slice(0, 20).map(p => `- slide ${numbers.get(String(p.slide)) ?? '?'}, \`${p.element}\`: ${p.message}`)
+    if (problems.length > 20) lines.push(`- and ${problems.length - 20} more`)
+    return ['HTML embeds reported problems while drawing, so they may be blank or half drawn. Fix their content with update_element:', ...lines].join('\n')
+  }
+
   // Slides drawn lately, by the deck as it was and the slide, so asking
   // again for one that hasn't changed costs nothing; and when each link last
   // had slides drawn
@@ -553,12 +562,13 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     const width = 960, height = Math.min(1440, Math.max(270, Math.round(960 * sh / sw)))
     const key = `${viewer.deckVersion(deck)}|${found.slide.id}`
     const says = `Slide ${found.number} of ${format.shownSlides(deck).length}, as presented, with all its steps shown.`
-    const picture = image => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' }] })
+    const picture = ({ image, problems }) => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' },
+      ...(problems.length ? [{ type: 'text', text: embedProblemsText(deck, problems) }] : [])] })
     if (renders.has(key)) {
-      const image = renders.get(key)
+      const drawn = renders.get(key)
       renders.delete(key)
-      renders.set(key, image)
-      return picture(image)
+      renders.set(key, drawn)
+      return picture(drawn)
     }
     if (!deckPage || !renderer.chromiumPath()) return failure('This Parallax server can\'t draw slides. Read the slide with get_slide instead.')
     const hour = Date.now() - 60 * 60 * 1000
@@ -570,15 +580,16 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     if (renderer.queueLength() >= MAX_RENDER_QUEUE) return failure('The server is busy drawing other slides. Try again in a minute.')
     rendered.set(link.id, [...times, Date.now()])
     let image
+    const problems = []
     try {
-      image = await renderer.renderSlide({ html: await deckPage(deck, link.ownerId), origin: local, slideId: found.slide.id, width, height })
+      image = await renderer.renderSlide({ html: await deckPage(deck, link.ownerId), origin: local, slideId: found.slide.id, width, height, problems })
     } catch (err) {
       if (err instanceof renderer.ThumbnailError) return failure(`${err.message.replace(/\.$/, '')}. Read the slide with get_slide instead.`)
       throw err
     }
-    renders.set(key, image)
+    renders.set(key, { image, problems })
     if (renders.size > KEEP_RENDERS) renders.delete(renders.keys().next().value)
-    return picture(image)
+    return picture({ image, problems })
   }
 
   // render_deck's pictures lately, by the deck as it was and the slides, and
@@ -601,7 +612,8 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     const width = 960, height = Math.min(1440, Math.max(270, Math.round(960 * sh / sw)))
     const more = last < shown.length ? ` Slides ${last + 1}–${shown.length} aren't in it: call again with from ${last + 1}.` : ''
     const says = `Slides ${first}–${last} of ${shown.length}, as presented, with all their steps shown, numbered as get_deck numbers them.${more}`
-    const picture = image => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' }] })
+    const picture = ({ image, problems }) => ({ content: [{ type: 'text', text: says }, { type: 'image', data: image.toString('base64'), mimeType: 'image/jpeg' },
+      ...(problems.length ? [{ type: 'text', text: embedProblemsText(deck, problems) }] : [])] })
     const key = `${viewer.deckVersion(deck)}|${first}-${last}`
     if (sheets.has(key)) return picture(sheets.get(key))
     if (!deckPage || !renderer.chromiumPath()) return failure('This Parallax server can\'t draw slides. Use check_deck and get_slide instead.')
@@ -614,18 +626,19 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     if (renderer.queueLength() >= MAX_RENDER_QUEUE) return failure('The server is busy drawing other slides. Try again in a minute.')
     sheeted.set(link.id, [...times, Date.now()])
     let image
+    const problems = []
     try {
       image = await renderer.renderSheet({
-        html: await deckPage(deck, link.ownerId), origin: local, width, height,
+        html: await deckPage(deck, link.ownerId), origin: local, width, height, problems,
         slides: chosen.map(({ slide, number }) => ({ id: slide.id, label: `${number} · ${format.titleOf(slide) || '(no title)'}` })),
       })
     } catch (err) {
       if (err instanceof renderer.ThumbnailError) return failure(`${err.message.replace(/\.$/, '')}. Use check_deck and get_slide instead.`)
       throw err
     }
-    sheets.set(key, image)
+    sheets.set(key, { image, problems })
     if (sheets.size > 8) sheets.delete(sheets.keys().next().value)
-    return picture(image)
+    return picture({ image, problems })
   }
 
   // ── Pictures (add_image, request_upload, PUT /mcp/upload/<ticket>) ──

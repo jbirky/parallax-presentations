@@ -8,6 +8,7 @@ import { api } from '../utils/api'
 import { supportsClickAction, safeActionUrl, slideLabel, elementLabels, MAX_STATES, STATE_EASINGS, DEFAULT_STATE_DURATION, newStateId, withClickToZoom } from '../utils/clickActions'
 import { CLOSED_SHAPES } from '../utils/shapeGeometry'
 import { feynmanTikz, feynmanSteps } from '../utils/feynmanDiagram'
+import { htmlEmbedModel, MAX_EMBED_STEPS } from '../utils/embedRuntime'
 import { circuitTikz, circuitSteps } from '../utils/circuitDiagram'
 import { logicTikz, logicSteps, logicTableLatex } from '../utils/logicDiagram'
 import { freebodyTikz, freebodySteps } from '../utils/freebodyDiagram'
@@ -577,6 +578,28 @@ export default function PropertiesPanel({ slide, selectedElement, pluginInfo = n
               <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Double-click element to open code editor</p>
             </div>
           ))}
+
+          {/* An embed's steps: clicks of the slide its script hears (utils/embedRuntime.js) */}
+          {selectedElement.type === 'html' && (
+            <div style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Clicks of the slide its script hears with parallax.onStep">
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Steps</div>
+                <input className="prop-input" type="number" min={0} max={MAX_EMBED_STEPS} step={1} aria-label="Steps"
+                  value={htmlEmbedModel(selectedElement).steps}
+                  onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 0 && n <= MAX_EMBED_STEPS) onUpdateElement({ steps: n }) }}
+                  style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+              </div>
+              {htmlEmbedModel(selectedElement).steps > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>First step at slide step</div>
+                  <input className="prop-input" type="number" min={1} max={1000} step={1} aria-label="First step at slide step"
+                    value={htmlEmbedModel(selectedElement).stepStart}
+                    onChange={e => { const n = Math.round(Number(e.target.value)); if (n >= 1 && n <= 1000) onUpdateElement({ stepStart: n }) }}
+                    style={{ width: 50, padding: '2px 4px', fontSize: 11 }} />
+                </div>
+              )}
+            </div>
+          )}
 
           {selectedElement.type === 'p5' && (
             <div style={{ marginBottom: 10 }}>

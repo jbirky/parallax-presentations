@@ -18,7 +18,8 @@ const tab = active => ({
   borderRadius: 6, color: active ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '4px 12px',
 })
 
-export default function HtmlEmbedModal({ content = '', width = 840, height = 400, background = null, initialMode, onApply, onCancel }) {
+// steps: the clicks the embed takes; the preview shows it at its last
+export default function HtmlEmbedModal({ content = '', width = 840, height = 400, steps = 0, background = null, initialMode, onApply, onCancel }) {
   const [html, setHtml] = useState(content)
   const parsed = useMemo(() => readEmbedContent(html), [html])
   const [mode, setMode] = useState(() => initialMode || (readEmbedContent(content) ? 'content' : 'code'))
@@ -75,7 +76,7 @@ export default function HtmlEmbedModal({ content = '', width = 840, height = 400
                 <iframe
                   title="Embed preview"
                   sandbox="allow-scripts"
-                  srcDoc={localizeLibraries(buildHtmlEmbed(previewHtml, width, height))}
+                  srcDoc={localizeLibraries(buildHtmlEmbed(previewHtml, width, height, undefined, steps))}
                   style={{ width, height, border: 'none', display: 'block', transform: `scale(${scale})`, transformOrigin: '0 0' }}
                 />
               </div>

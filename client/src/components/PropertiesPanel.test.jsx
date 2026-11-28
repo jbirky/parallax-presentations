@@ -187,3 +187,17 @@ describe('A molecule’s citation in the Properties panel', () => {
     expect(show(el).lines.some(l => l.startsWith('Cites'))).toBe(false)
   })
 })
+
+describe('An HTML embed’s steps', () => {
+  const embed = { id: 'emb', type: 'html', x: 0, y: 0, width: 100, height: 100, zIndex: 1, content: '<p>x</p>' }
+
+  it('takes how many of the slide’s clicks it hears, and where the first comes once it has any', () => {
+    const { html } = panel({ id: 's1', elements: [embed] }, embed)
+    expect(html).toMatch(/aria-label="Steps"[^>]* value="0"/)
+    expect(html).not.toContain('First step at slide step')
+    const stepped = { ...embed, steps: 3, stepStart: 2 }
+    const after = panel({ id: 's1', elements: [stepped] }, stepped).html
+    expect(after).toMatch(/aria-label="Steps"[^>]* value="3"/)
+    expect(after).toMatch(/aria-label="First step at slide step"[^>]* value="2"/)
+  })
+})

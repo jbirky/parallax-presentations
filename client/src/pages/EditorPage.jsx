@@ -1247,7 +1247,7 @@ svg.selectAll('circle').data(data).join('circle')
   const openHtmlEditor = useCallback((elementId, mode) => {
     const element = presentation?.slides[currentSlideIndexRef.current]?.elements?.find(el => el.id === elementId)
     if (!element || element.type !== 'html' || heldByOther(elementId)) return
-    setHtmlEditorState({ elementId, content: element.content || '', width: element.width, height: element.height, mode })
+    setHtmlEditorState({ elementId, content: element.content || '', width: element.width, height: element.height, steps: Number(element.steps) || 0, mode })
   }, [presentation])
 
   const commitHtmlEdit = useCallback((content) => {
@@ -5140,6 +5140,7 @@ function draw() {
           content={htmlEditorState.content}
           width={htmlEditorState.width}
           height={htmlEditorState.height}
+          steps={htmlEditorState.steps}
           initialMode={htmlEditorState.mode}
           background={slidePalette(currentSlide, presentation.theme, presentation.themeColors).background}
           onApply={commitHtmlEdit}

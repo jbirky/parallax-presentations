@@ -386,6 +386,20 @@ describe('AI collaborator links', { skip }, () => {
       await callTool(secret, 'render_slide', { slide: 2 })
       assert.equal(drawn.length, 2, 'a changed deck is drawn again')
 
+      // What the slide's HTML embeds reported while it was drawn, kept with the picture
+      thumbnails.renderSlide = async opts => {
+        drawn.push(opts)
+        opts.problems.push({ slide: 'slide-cutoff', element: 'emb1', message: 'Uncaught ReferenceError: boom is not defined (line 4)' })
+        return Buffer.from('half drawn')
+      }
+      await callTool(secret, 'update_slide', { slide: 2, notes: 'Changed again' })
+      const reported = (await callTool(secret, 'render_slide', { slide: 2 })).body.result.content
+      assert.equal(reported.length, 3)
+      assert.equal(reported[2].text, 'HTML embeds reported problems while drawing, so they may be blank or half drawn. Fix their content with update_element:\n- slide 2, `emb1`: Uncaught ReferenceError: boom is not defined (line 4)')
+      const again = (await callTool(secret, 'render_slide', { slide: 2 })).body.result.content
+      assert.equal(drawn.length, 3)
+      assert.equal(again[2].text, reported[2].text)
+
       const missing = await callTool(secret, 'render_slide', { slide: 5 })
       assert.equal(missing.body.result.isError, true)
       assert.match(toolText(missing), /from 1 to 2/)

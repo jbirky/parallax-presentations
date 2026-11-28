@@ -11708,6 +11708,203 @@ var GRAPH_DECK_SCRIPT = `
     })();
 `;
 
+// client/src/utils/embedRuntime.js
+var MAX_EMBED_STEPS = 50;
+var MAX_PROBLEMS = 10;
+function htmlEmbedModel(el) {
+  const steps = Math.round(Number(el?.steps));
+  const start = Math.round(Number(el?.stepStart));
+  return {
+    steps: steps >= 1 && steps <= MAX_EMBED_STEPS ? steps : 0,
+    stepStart: start >= 1 && start <= 1e3 ? start : 1
+  };
+}
+function htmlEmbedSteps(el) {
+  if (el?.type !== "html") return [];
+  const { steps, stepStart } = htmlEmbedModel(el);
+  const out = [];
+  for (let k = 1; k <= steps && stepStart - 1 + k <= 1e3; k++) out.push([stepStart - 1 + k, k]);
+  return out;
+}
+var safeId = (id) => String(id || "").replace(/[^A-Za-z0-9_-]/g, "");
+function htmlEmbedStepMarkers(slide) {
+  let html = "";
+  for (const el of slide?.elements || []) {
+    const id = safeId(el.id);
+    for (const [n, k] of htmlEmbedSteps(el)) html += `<span class="fragment" data-fragment-index="${n}" data-html-step="${id}" data-html-step-at="${k}" aria-hidden="true" style="position:absolute;"></span>`;
+  }
+  return html;
+}
+function embedRuntime(win, init) {
+  var state = { step: init.step, shown: init.shown };
+  var listeners = { step: [], show: [], hide: [] };
+  var reported = 0;
+  function report(message) {
+    if (reported >= init.max) return;
+    reported++;
+    try {
+      win.parent.postMessage({ source: "parallax-embed", type: "problem", message: String(message).slice(0, 300) }, "*");
+    } catch (e) {
+    }
+  }
+  function lineOf2(n) {
+    return n > init.from ? n - init.shift : n;
+  }
+  win.addEventListener("error", function(e) {
+    var t = e.target;
+    if (t && t !== win && t.tagName) {
+      report("Couldn’t load " + (t.src || t.href || "a <" + t.tagName.toLowerCase() + ">"));
+      return;
+    }
+    report((e.message || "Script error") + (e.lineno ? " (line " + lineOf2(e.lineno) + ")" : ""));
+  }, true);
+  win.addEventListener("unhandledrejection", function(e) {
+    var r = e.reason;
+    report("Unhandled promise rejection: " + (r && r.message ? r.message : r));
+  });
+  var original = win.console && win.console.error;
+  if (original) {
+    win.console.error = function() {
+      report(Array.prototype.map.call(arguments, function(a) {
+        return a && a.message ? a.message : String(a);
+      }).join(" "));
+      return original.apply(this, arguments);
+    };
+  }
+  function call(fn, a, b) {
+    try {
+      fn(a, b);
+    } catch (err) {
+      setTimeout(function() {
+        throw err;
+      });
+    }
+  }
+  function on(kind, fn, now) {
+    if (typeof fn !== "function") return function() {
+    };
+    listeners[kind].push(fn);
+    if (now) now();
+    return function() {
+      listeners[kind] = listeners[kind].filter(function(f) {
+        return f !== fn;
+      });
+    };
+  }
+  win.addEventListener("message", function(e) {
+    var d = e.data;
+    if (e.source !== win.parent || !d || d.source !== "parallax-deck" || d.type !== "embed-state") return;
+    var step = Math.max(0, Math.min(init.steps, Math.round(Number(d.step)) || 0));
+    var shown = !!d.shown;
+    if (shown && !state.shown) {
+      state.shown = true;
+      listeners.show.slice().forEach(function(fn) {
+        call(fn);
+      });
+    }
+    if (step !== state.step) {
+      var from = state.step;
+      state.step = step;
+      listeners.step.slice().forEach(function(fn) {
+        call(fn, step, from);
+      });
+    }
+    if (!shown && state.shown) {
+      state.shown = false;
+      listeners.hide.slice().forEach(function(fn) {
+        call(fn);
+      });
+    }
+  });
+  var prev = win.parallax || {};
+  var api = {
+    onStep: function(fn) {
+      return on("step", fn, function() {
+        call(fn, state.step, state.step);
+      });
+    },
+    onShow: function(fn) {
+      return on("show", fn, state.shown ? function() {
+        call(fn);
+      } : null);
+    },
+    onHide: function(fn) {
+      return on("hide", fn);
+    }
+  };
+  Object.defineProperties(api, {
+    steps: { value: init.steps, enumerable: true },
+    step: { get: function() {
+      return state.step;
+    }, enumerable: true },
+    shown: { get: function() {
+      return state.shown;
+    }, enumerable: true }
+  });
+  if (prev.datasets) api.datasets = prev.datasets;
+  win.parallax = Object.freeze(api);
+  try {
+    win.parent.postMessage({ source: "parallax-embed", type: "hello" }, "*");
+  } catch (e) {
+  }
+}
+var RUNTIME_CODE = `(${embedRuntime.toString()})`.replace(/<\/(script)/gi, "<\\/$1");
+function embedPage(userHtml, before, { steps = 0, inDeck = false } = {}) {
+  const init = { steps, step: inDeck ? 0 : steps, shown: !inDeck, max: MAX_PROBLEMS };
+  const script = (s) => `<script>${s}</script>`;
+  const injected = (shift2, from) => before + script(`${RUNTIME_CODE}(window,${JSON.stringify({ ...init, shift: shift2, from })});`);
+  const shift = (injected(0, 0).match(/\n/g) || []).length;
+  const at = injectionPoint(userHtml);
+  const linesBefore = (userHtml.slice(0, at).match(/\n/g) || []).length;
+  return userHtml.slice(0, at) + injected(shift, linesBefore + shift) + userHtml.slice(at);
+}
+function injectionPoint(userHtml) {
+  for (const re of [/<head[^>]*>/i, /<html[^>]*>/i, /<!doctype[^>]*>/i]) {
+    const m = re.exec(userHtml);
+    if (m) return m.index + m[0].length;
+  }
+  return 0;
+}
+var EMBED_PROBLEMS_SCRIPT = `<script>
+  (function() {
+    var problems = window.__parallaxEmbedProblems = [];
+    window.addEventListener('message', function(e) {
+      var d = e.data;
+      if (!d || d.source !== 'parallax-embed' || d.type !== 'problem' || problems.length >= 200) return;
+      var frame = Array.prototype.find.call(document.querySelectorAll('iframe[data-html-embed]'), function(f) { return f.contentWindow === e.source; });
+      if (!frame) return;
+      var section = frame.closest('section[data-slide-id]');
+      problems.push({ element: frame.getAttribute('data-html-embed'), slide: section ? section.getAttribute('data-slide-id') : null, message: String(d.message).slice(0, 300) });
+    });
+  })();
+</script>`;
+var HTML_EMBED_DECK_SCRIPT = `
+    (function() {
+      function frames() { return document.querySelectorAll('iframe[data-html-embed]'); }
+      function stepOf(frame, slide) {
+        var id = frame.getAttribute('data-html-embed'), n = 0;
+        slide.querySelectorAll('.fragment[data-html-step]').forEach(function(m) {
+          if (m.getAttribute('data-html-step') === id && m.classList.contains('visible')) n = Math.max(n, +m.getAttribute('data-html-step-at') || 0);
+        });
+        return n;
+      }
+      function send(frame) {
+        var slide = frame.closest('section');
+        if (!slide || !frame.contentWindow) return;
+        try { frame.contentWindow.postMessage({ source: 'parallax-deck', type: 'embed-state', shown: slide === Reveal.getCurrentSlide(), step: stepOf(frame, slide) }, '*'); } catch (e) {}
+      }
+      function sendAll() { Array.prototype.forEach.call(frames(), send); }
+      Array.prototype.forEach.call(frames(), function(frame) { frame.addEventListener('load', function() { send(frame); }); });
+      window.addEventListener('message', function(e) {
+        var d = e.data;
+        if (!d || d.source !== 'parallax-embed' || d.type !== 'hello' || !Reveal.isReady()) return;
+        var frame = Array.prototype.find.call(frames(), function(f) { return f.contentWindow === e.source; });
+        if (frame) send(frame);
+      });
+      ['ready', 'slidechanged', 'fragmentshown', 'fragmenthidden'].forEach(function(name) { Reveal.on(name, sendAll); });
+    })();
+`;
+
 // client/src/utils/equationRuntime.js
 function equationRuntime(root, cfg, katex) {
   const doc = root.ownerDocument;
@@ -39193,17 +39390,10 @@ var EMBED_KEYS_SCRIPT = `
     })();
 `;
 var hasHtmlEmbeds = (presentation) => (presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "html"));
-function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false) {
+function buildHtmlEmbed(userHtml, embedW, embedH, withDatasets = false, steps = 0) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();${EMBED_RESIZE_LISTENER}</script>`;
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}</style>`;
-  const injection = initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : "");
-  if (/<head[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<head[^>]*>/i, (m) => m + injection);
-  if (/<html[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<html[^>]*>/i, (m) => m + injection);
-  if (/<!doctype[^>]*>/i.test(userHtml))
-    return userHtml.replace(/(<!doctype[^>]*>)/i, "$1" + injection);
-  return injection + userHtml;
+  return embedPage(userHtml, initScript + resetStyle + (withDatasets ? EMBED_DATASETS_SCRIPT : ""), { steps, inDeck: true });
 }
 function absoluteSrc(src) {
   if (!src) return src;
@@ -39471,9 +39661,9 @@ function generateRevealHTML(presentation, opts = {}) {
         return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2}${harmonicsDeckAttrs(el)} style="${style}"></div>`;
       }
       if (el.type === "html") {
-        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData);
+        const embedHtml = buildHtmlEmbed(el.content || "", el.width, el.height, offersData, htmlEmbedModel(el).steps);
         const srcdoc = embedHtml.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed></iframe></div>`;
+        return `<div${dataId2}${fragClass2}${fragIdx2}${enterAttrs2}${actionAttrs2} style="${style}"><iframe srcdoc="${srcdoc}" style="width:100%;height:100%;border:none;background:transparent;display:block;" scrolling="no" data-html-embed="${String(el.id || "").replace(/[^A-Za-z0-9_-]/g, "")}"></iframe></div>`;
       }
       if (el.type === "graph") {
         const srcdoc = graphPageHtml(el, { ...deckData?.graphs ? { data: deckData.graphs[el.id] || null } : {}, stability: palette }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -39796,7 +39986,7 @@ ${content}
     const perSlideSpeed = slide.transitionSpeed ? ` data-transition-speed="${sanitizeAttr(slide.transitionSpeed)}"` : "";
     const scrollAttr = axis === "x" ? ` data-scroll-width="${canvasW}"` : axis === "y" ? ` data-scroll-height="${canvasH}"` : "";
     const canvasBg = scrolling ? canvasBackgroundStyle(slide.background, absoluteSrc) : "";
-    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide);
+    const bodyHtml = (scrolling ? scrollingSlideBody({ slideW, slideH, canvasW, canvasH, axis, elementsHtml, pinnedHtml, background: canvasBg }) : elementsHtml) + stepMarkers(slide) + graphStepMarkers(slide) + equationStepMarkers(slide) + feynmanStepMarkers(slide) + circuitStepMarkers(slide) + logicStepMarkers(slide) + freebodyStepMarkers(slide) + vennStepMarkers(slide) + timingStepMarkers(slide) + geometryStepMarkers(slide) + periodicStepMarkers(slide) + harmonicsStepMarkers(slide) + htmlEmbedStepMarkers(slide);
     slideSectionHtmlByIndex.set(slideIndex, `    <section data-slide-id="${escapeHtml(String(slide.id || slideIndex))}"${slideIdAttr(slide)}${canvasBg ? "" : bgAttrs}${autoAnimateAttr}${autoAnimateDurAttr}${autoAnimateEasingAttr}${perSlideTransition}${customTransAttr}${perSlideSpeed}${scrollAttr} style="padding:0;width:${slideW}px;height:${slideH}px;overflow:hidden;font-size:42px;--r-heading-color:${palette.heading};--r-link-color:${palette.link};${cssText(paletteVars(palette))}" class="${SLIDE_CLASS}"${slideLayoutAttr(slide)}${ownBackgroundAttr(palette)}>
 ${bodyHtml}
 ${footerHtml}
@@ -39944,7 +40134,7 @@ ${sections}
   <style>
 ${sanitizeCustomCSS(presentation.customCSS)}
   </style>` : ""}
-${offersData ? deckDatasetsScript(deckData.datasets) : ""}
+${offersData ? deckDatasetsScript(deckData.datasets) : ""}${hasHtmlEmbeds(presentation) ? EMBED_PROBLEMS_SCRIPT : ""}
 </head>
 <body>
   <div class="${["reveal", deckThemeClass(theme)].filter(Boolean).join(" ")}">
@@ -40169,7 +40359,7 @@ ${slidesHtml}
       });
       document.addEventListener('keydown', function(e) { if (e.key === 'Escape') dismissAll(); });
     })();
-${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
+${CLICK_ACTION_SCRIPT}${hasShrinkText(presentation) ? SHRINK_FIT_SCRIPT : ""}${scrollingDeck ? SCROLLING_SCRIPT : ""}${hasGraphs(presentation) ? GRAPH_DECK_SCRIPT : ""}${hasHtmlEmbeds(presentation) ? EMBED_KEYS_SCRIPT + HTML_EMBED_DECK_SCRIPT : ""}${hasEquations(presentation) ? equationDeckScript() : ""}${hasFeynman(presentation) || hasCircuits(presentation) || hasLogic(presentation) || hasFreebody(presentation) || hasVenn(presentation) || hasTiming(presentation) ? diagramDeckScript() : ""}${hasPeriodic(presentation) ? periodicDeckScript() : ""}${hasGeometry(presentation) ? geometryDeckScript() : ""}${hasHarmonics(presentation) ? harmonicsDeckScript() : ""}${(presentation.slides || []).some((s) => (s.elements || []).some((el) => el.type === "graph" || el.type === "model" || el.type === "molecule")) ? EMBED_SCALE_SCRIPT : ""}
 
 ${(() => {
     const overviewLayout = presentation.overviewLayout || "linear";

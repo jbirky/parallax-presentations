@@ -575,11 +575,30 @@ B.create('functiongraph', [x => a.Value() * Math.sin(x) & 1]);
   // through the slides back, and the deck hears them from embeds alone
   it('moves through the slides with the keys an embed posts back', () => {
     const html = generateRevealHTML(embedPresentation(JSX_EMBED))
-    expect(html).toMatch(/<iframe srcdoc="[^"]*"[^>]* data-html-embed>/)
+    expect(html).toMatch(/<iframe srcdoc="[^"]*"[^>]* data-html-embed="[A-Za-z0-9_-]+">/)
     expect(html).toContain("d.source !== 'parallax-embed' || d.type !== 'key'")
     expect(html).toContain("querySelectorAll('iframe[data-html-embed]')")
     const none = generateRevealHTML({ ...embedPresentation(JSX_EMBED), slides: [{ id: 's', elements: [] }] })
     expect(none).not.toContain('parallax-embed')
+  })
+
+  // utils/embedRuntime.js: an embed hears its slide's clicks and whether its
+  // slide is showing, and the deck keeps what it reports
+  it('gives an embed its steps, tells it where it is, and keeps what it reports', () => {
+    const deck = embedPresentation(JSX_EMBED)
+    deck.slides[0].elements[0] = { ...deck.slides[0].elements[0], id: 'emb', steps: 2, stepStart: 3 }
+    const html = generateRevealHTML(deck)
+    expect(html).toContain('data-html-embed="emb"')
+    expect(html).toContain('data-fragment-index="3" data-html-step="emb" data-html-step-at="1"')
+    expect(html).toContain('data-fragment-index="4" data-html-step="emb" data-html-step-at="2"')
+    const srcdoc = html.match(/<iframe srcdoc="([\s\S]*?)" style=/)[1]
+    expect(srcdoc).toContain('&quot;steps&quot;:2,&quot;step&quot;:0,&quot;shown&quot;:false')
+    expect(html).toContain("type: 'embed-state'")
+    const head = html.slice(0, html.indexOf('</head>'))
+    expect(head).toContain('window.__parallaxEmbedProblems = []')
+    const none = generateRevealHTML({ ...deck, slides: [{ id: 's', elements: [] }] })
+    expect(none).not.toContain('__parallaxEmbedProblems')
+    expect(none).not.toContain('data-html-step')
   })
 })
 

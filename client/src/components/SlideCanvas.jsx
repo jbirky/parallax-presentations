@@ -18,21 +18,12 @@ function snapshotScript(key) {
 }
 
 // An HTML embed's page: its own HTML with the sizing, reset and data scripts
-// every embed gets. Also the content form's preview (HtmlEmbedModal)
-export function buildHtmlEmbed(userHtml, embedW, embedH, snapKey) {
+// every embed gets. Also the content form's preview (HtmlEmbedModal). Here
+// it is shown at its last step (utils/embedRuntime.js)
+export function buildHtmlEmbed(userHtml, embedW, embedH, snapKey, steps = 0) {
   const initScript = `<script>const EMBED_WIDTH=${embedW},EMBED_HEIGHT=${embedH};(function(){function fit(){document.querySelectorAll('svg').forEach(function(s){if(s._vb)return;var w=parseFloat(s.getAttribute('width')),h=parseFloat(s.getAttribute('height'));if(!s.getAttribute('viewBox')){if(!(w>0&&h>0))return;s.setAttribute('viewBox','0 0 '+w+' '+h);}s.setAttribute('width','100%');s.setAttribute('height','100%');s._vb=1;});}window.addEventListener('load',fit);setTimeout(fit,100);setTimeout(fit,400);new MutationObserver(fit).observe(document.documentElement,{childList:true,subtree:true});})();<\/script>`
   const resetStyle = `<style>html,body{margin:0;padding:0;overflow:hidden;width:100%;height:100%;box-sizing:border-box;}canvas{display:block;}svg{display:block;}<\/style>`
-  const injection = initScript + resetStyle + snapshotScript(snapKey) + EMBED_DATASETS_SCRIPT
-  // Inject into <head> so DOCTYPE stays first (preserves standards mode)
-  if (/<head[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<head[^>]*>/i, m => m + injection)
-  // Full doc without explicit <head>: insert after <html> tag or after DOCTYPE
-  if (/<html[^>]*>/i.test(userHtml))
-    return userHtml.replace(/<html[^>]*>/i, m => m + injection)
-  if (/<!doctype[^>]*>/i.test(userHtml))
-    return userHtml.replace(/(<!doctype[^>]*>)/i, '$1' + injection)
-  // Snippet: prepend directly
-  return injection + userHtml
+  return embedPage(userHtml, initScript + resetStyle + snapshotScript(snapKey) + EMBED_DATASETS_SCRIPT, { steps })
 }
 import { EditorContent } from '@tiptap/react'
 import katex from 'katex'
@@ -63,6 +54,7 @@ import { moleculeViewerHtml, moleculeSnapshotContent } from '../utils/moleculeVi
 import { graphPageHtml, graphSnapshotContent, graphStability } from '../utils/graphPage'
 import { subscribeGraphData, graphDataVersion } from '../utils/graphData'
 import { EMBED_DATASETS_SCRIPT } from '../utils/deckData'
+import { embedPage, htmlEmbedModel } from '../utils/embedRuntime'
 import { tikzDiagramSvg } from '../utils/tikzDiagram'
 import { safeHtml, safeSvg } from '../utils/safeHtml'
 import { resolveCitationsInHtml } from '../utils/citationIndex'
@@ -1743,7 +1735,7 @@ export function CanvasElement({ element, slideText, slideStability = null, canva
         {element.type === 'html' && (
           <iframe
             key={`${element.id}-${element.width}-${element.height}`}
-            srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content)))}
+            srcDoc={localizeLibraries(buildHtmlEmbed(element.content || '', element.width, element.height, snapshotKey(element.id, element.content), htmlEmbedModel(element).steps))}
             style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: isSelected ? 'auto' : 'none' }}
             sandbox="allow-scripts"
             title="HTML embed"
