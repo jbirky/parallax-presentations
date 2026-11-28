@@ -69,7 +69,7 @@ function createOAuth({ storage, clerkClient, provision, safeFetch, publishableKe
       bearer_methods_supported: ['header'],
       scopes_supported: ['profile', 'email'],
       resource_name: 'Parallax',
-      resource_documentation: `${origin}/docs/tutorials/ai-agents`,
+      resource_documentation: `${origin}/#docs/tutorials/ai-agents`,
     }
   }
 

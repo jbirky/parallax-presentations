@@ -160,7 +160,7 @@ describe('AI access tokens', { skip }, () => {
       bearer_methods_supported: ['header'],
       scopes_supported: ['profile', 'email'],
       resource_name: 'Parallax',
-      resource_documentation: 'https://parallax-presentations.com/docs/tutorials/ai-agents',
+      resource_documentation: 'https://parallax-presentations.com/#docs/tutorials/ai-agents',
     })
     assert.equal((await fetch(`${t.base}/.well-known/oauth-protected-resource`)).status, 200)
     const server = await (await fetch(`${t.base}/.well-known/oauth-authorization-server`)).json()
