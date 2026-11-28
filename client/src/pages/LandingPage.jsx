@@ -451,7 +451,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
           <section className="lp-band lp-light alt" id="start" aria-labelledby="lp-start">
             <div className="lp-wrap">
               <div className="lp-head">
-                <h2 id="lp-start">Start free, or run it yourself</h2>
+                <h2 id="lp-start">Sign up or self host</h2>
                 <p>Sign up for an account on our servers, or host it on your own server for free. For online presentations and collaborative editing.</p>
               </div>
               <div className="lp-plans">
