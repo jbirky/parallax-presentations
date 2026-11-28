@@ -60,7 +60,9 @@ jobs:
   build-linux:
     needs: build-client
     if: github.event_name == 'push' || contains(inputs.targets, 'linux')
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: 26.04's RPM 6 ignores the buildroot that
+    # electron-builder's fpm 1.9.3 sets, so rpmbuild finds none of the files
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
