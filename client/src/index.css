@@ -877,7 +877,7 @@ sup[data-cite] { font-weight: 700; }
   -webkit-font-smoothing: antialiased;
 }
 /* Ink: the page, and the panels that stay dark */
-.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead,
+.landing-page, .landing-page .lp-feature, .landing-page .lp-practice, .landing-page .lp-stepdemo, .landing-page .lp-plan.lead, .landing-page .lp-install-panel,
 .landing-page .lp-steps > button.on, .landing-page .lp-show-tabs [aria-selected="true"] {
   --lp-bg: var(--lp-ink); --lp-raise: #28282c; --lp-card: #2e2e32;
   --lp-line: rgba(236, 235, 230, 0.16); --lp-edge: rgba(236, 235, 230, 0.45);
@@ -997,12 +997,12 @@ sup[data-cite] { font-weight: 700; }
 .lp-head p { max-width: 660px; font-size: 18px; line-height: 1.5; color: var(--lp-text); }
 
 /* Examples */
-.lp-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
-.lp-filters button { min-height: 44px; padding: 0 16px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1.5px solid var(--lp-strong); }
-.lp-filters button span { margin-left: 6px; color: var(--lp-faint); }
-.lp-filters button:hover { background: color-mix(in srgb, var(--lp-strong) 7%, transparent); }
-.lp-filters button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); }
-.lp-filters button[aria-pressed="true"] span { color: color-mix(in srgb, var(--lp-bg) 62%, var(--lp-strong)); }
+.lp-filters, .lp-install-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+:is(.lp-filters, .lp-install-tabs) button { min-height: 44px; padding: 0 16px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1.5px solid var(--lp-strong); }
+:is(.lp-filters, .lp-install-tabs) button span { margin-left: 6px; color: var(--lp-faint); }
+:is(.lp-filters, .lp-install-tabs) button:hover { background: color-mix(in srgb, var(--lp-strong) 7%, transparent); }
+:is(.lp-filters, .lp-install-tabs) button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); }
+:is(.lp-filters, .lp-install-tabs) button[aria-pressed="true"] span { color: color-mix(in srgb, var(--lp-bg) 62%, var(--lp-strong)); }
 .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 24px; margin-top: 32px; }
 .lp-card { display: grid; grid-template-rows: auto 1fr; text-align: left; text-decoration: none; color: var(--lp-text); background: var(--lp-card); border-top: 4px solid var(--lp-strong); transition: box-shadow 0.15s, transform 0.15s; }
 .lp-card:hover { transform: translateY(-3px); box-shadow: var(--lp-small-shadow); }
@@ -1405,6 +1405,32 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-plan-row .lp-btn:disabled, .lp-plan-row .lp-btn:disabled:hover { opacity: 0.6; cursor: default; background: none; border-color: var(--lp-edge); box-shadow: none; }
 .lp-quiet { font-size: 14px; color: var(--lp-text); text-decoration: underline; text-underline-offset: 3px; }
 .lp-quiet:hover { color: var(--lp-strong); }
+
+/* Install the desktop app (#install, InstallSteps.jsx): a tab for each
+   platform, and its steps in an ink panel like the lead plan's */
+.lp-install { margin-top: 40px; }
+.lp-install-tabs { margin-top: 0; }
+.landing-page .lp-install-panel { display: flex; flex-direction: column; gap: 18px; max-width: 860px; margin-top: 24px; padding: 32px; background: var(--lp-bg); color: var(--lp-text); box-shadow: var(--lp-frame-shadow); }
+.lp-install-panel ol { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; counter-reset: lp-step; }
+.lp-install-panel li { position: relative; padding-left: 44px; counter-increment: lp-step; font-size: 16px; line-height: 1.55; }
+.lp-install-panel li::before { content: counter(lp-step); position: absolute; left: 0; top: 0; width: 28px; height: 28px; display: grid; place-items: center; font: 700 14px/1 var(--lp-display); color: var(--lp-bg); background: var(--lp-strong); }
+.lp-install-panel b { font-weight: 600; color: var(--lp-strong); }
+.lp-install-panel p { font-size: 16px; line-height: 1.55; }
+.lp-install-panel :not(pre) > code { font: 0.88em var(--lp-mono); color: var(--lp-strong); overflow-wrap: anywhere; }
+.lp-install-distros { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-install-distros button { min-height: 40px; padding: 0 14px; font-size: 14px; font-weight: 600; color: var(--lp-strong); border: 1px solid var(--lp-edge); }
+.lp-install-distros button:hover { border-color: var(--lp-strong); }
+.lp-install-distros button[aria-pressed="true"] { color: var(--lp-bg); background: var(--lp-strong); border-color: var(--lp-strong); }
+.lp-install-code { position: relative; min-width: 0; }
+.lp-install-code pre { margin: 0; padding: 16px 56px 16px 18px; font: 13.5px/1.7 var(--lp-mono); color: var(--lp-strong); white-space: pre; overflow-x: auto;
+  background: color-mix(in srgb, var(--lp-strong) 7%, transparent); border-left: 3px solid var(--lp-blue); }
+.lp-install-code button { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; display: grid; place-items: center; color: var(--lp-strong); border: 1px solid var(--lp-line); }
+.lp-install-code button:hover { border-color: var(--lp-strong); }
+.lp-install-panel .lp-install-note { font-size: 14.5px; color: var(--lp-faint); }
+.lp-install-row { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; }
+.lp-install-panel .lp-install-foot { padding-top: 18px; border-top: 1px solid var(--lp-line); font-size: 14.5px; }
+.lp-install-foot .lp-quiet { margin-left: 4px; white-space: nowrap; }
+@media (max-width: 600px) { .landing-page .lp-install-panel { padding: 24px 18px; } .lp-install-row .lp-btn { width: 100%; } }
 
 /* The last word: try it */
 .lp-cta-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 48px; }

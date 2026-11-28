@@ -7,7 +7,8 @@
 // /examples/<slug>; the built-in ones in client/src/examples if the list
 // can't be had), how it compares with the tools people use, how a talk comes
 // together, a demo for each step (StepDemos.jsx), the elements by
-// subject, the ways to connect an AI agent, the plans, and a last way in. Ink and paper bands, the mark's red
+// subject, the ways to connect an AI agent, the plans, how to install the
+// desktop app (components/landing/InstallSteps.jsx), and a last way in. Ink and paper bands, the mark's red
 // and blue as offset shadows (index.css, Landing Page). It's dark unless
 // light is chosen, with the nav's toggle or the dashboard's (theme,
 // onToggleTheme; utils/theme.js). The docs
@@ -27,6 +28,7 @@ import usePointerDepth from '../utils/usePointerDepth'
 import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import WorkflowSteps from '../components/landing/StepDemos'
+import InstallSteps from '../components/landing/InstallSteps'
 import { api } from '../utils/api'
 import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
@@ -51,7 +53,7 @@ const COMPARISON = [
 const COMPARED = ['PowerPoint, Google Slides', 'LaTeX Beamer', 'reveal.js', 'Parallax']
 
 // The home tab's sections an address can name, as in /#examples
-const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'ai', 'start']
+const HOME_SECTIONS = ['top', 'features', 'examples', 'compare', 'workflow', 'practice', 'ai', 'start', 'install']
 
 // The built-in examples, as the server lists them
 const BUILT_IN_LIST = { hero: HERO_EXAMPLE, examples: BUILT_IN.map(e => ({ ...e, thumbnail: `/examples/thumbs/${e.slug}.jpg` })), templates: [] }
@@ -480,6 +482,17 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             </div>
           </section>
 
+          <section className="lp-band lp-light" id="install" aria-labelledby="lp-install">
+            <div className="lp-wrap">
+              <div className="lp-head">
+                <div className="lp-label">Desktop app</div>
+                <h2 id="lp-install">Install Parallax on <ParallaxWords>your computer</ParallaxWords></h2>
+                <p>For macOS, Windows and Linux. Free and open source, with no account needed.</p>
+              </div>
+              <InstallSteps />
+            </div>
+          </section>
+
           <section className="lp-band lp-cta" aria-labelledby="lp-cta">
             <div className="lp-wrap lp-cta-row">
               <div className="lp-cta-text">
@@ -508,6 +521,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                   {templates.length > 0 && <li><button type="button" onClick={() => { track('templates', { from: 'footer' }); switchTab('templates') }}>Templates</button></li>}
                   <li><button type="button" onClick={() => goTo('workflow')}>How it works</button></li>
                   <li><button type="button" onClick={() => { track('ai-agents', { from: 'footer' }); goTo('ai') }}>AI agents</button></li>
+                  <li><button type="button" onClick={() => { track('install', { from: 'footer' }); goTo('install') }}>Download</button></li>
                   <li><button type="button" onClick={() => { track('docs', { from: 'footer' }); switchTab('docs') }}>Docs</button></li>
                 </ul></div>
                 <div><h4>Project</h4><ul>

@@ -50,7 +50,7 @@ describe('the landing page', () => {
     expect(Number(words.style.getPropertyValue('--py'))).toBeGreaterThan(0)
     // The section and closing titles' fringed words move too
     const moving = [...el.querySelectorAll('.lp-parallax')]
-    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'an AI agent', 'Make your next talk in Parallax'])
+    expect(moving.map(w => w.textContent)).toEqual(['complex concepts.', 'your research', 'LaTeX, BibTeX and git', 'an AI agent', 'your computer', 'Make your next talk in Parallax'])
     for (const w of moving) expect(w.style.getPropertyValue('--px')).not.toBe('')
     // And the closing mark's red and blue P's (the clip path's red P too), the red twice as far
     const eyes = [...el.querySelectorAll('.lp-cta-mark [data-eye]')]
