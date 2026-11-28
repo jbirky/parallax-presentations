@@ -22,6 +22,7 @@
 const { randomUUID } = require('crypto')
 const shared = require('./shared')
 const { fail, num, int, str, color, oneOf, bool, list, object, only } = require('./checks')
+const { versions: LIBRARY_VERSIONS } = require('../services/libraries')
 
 const ink = dark => (dark ? '#ffffff' : '#1a1a1a')
 const ID = /^[A-Za-z0-9_-]{1,40}$/
@@ -268,6 +269,11 @@ const readLatex = el => [`   ${/\\begin\{tikzpicture\}|\\tikz[[{]/.test(el.conte
 const MAX_HTML = 50000
 // As utils/embedRuntime.js's MAX_EMBED_STEPS
 const MAX_EMBED_STEPS = 50
+// The libraries an HTML embed can link to at the versions Parallax has
+const EMBED_LIBRARIES = [['jsxgraph', 'JSXGraph'], ['d3', 'D3'], ['three', 'three.js'], ['p5', 'p5.js'], ['animejs', 'anime.js'], ['katex', 'KaTeX']]
+  .filter(([name]) => LIBRARY_VERSIONS[name])
+  .map(([name, label]) => `${label} ${LIBRARY_VERSIONS[name]}${name === 'animejs' && LIBRARY_VERSIONS[name].startsWith('3.') ? ' (write its version 3 API: anime({ targets }), anime.timeline())' : ''}`)
+  .join(', ')
 function makeHtml(spec) {
   only(spec, 'spec', ['content', 'steps', 'stepStart'])
   if (typeof spec.content !== 'string' || !spec.content.trim()) fail('An HTML element needs content: its HTML, with the <script> and <style> it needs.')
@@ -568,7 +574,7 @@ Example: { "op": "add_element", "slide": 2, "type": "timeline", "x": 40, "y": 16
     make: makeHtml, size: () => ({ w: 840, h: 400 }), fit: { cap: 1, fw: 0.9, fh: 0.8 }, read: readHtml,
     text: `spec: { "content": "HTML" }, and optional steps and stepStart (below).
 
-The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${'JSXGraph 1.11.1, D3 7, three.js, p5.js, anime.js, KaTeX'}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank or half drawn: render_slide shows it and lists what it reported (errors with their line in content, files that didn't load, console.error). For plots of functions, a graph element is simpler and follows the theme.
+The element is a page of its own, the size of its box, that runs its scripts in the editor and when presenting, kept apart from the rest of the presentation: it can't reach the deck or the person's account. Give its root element width: 100%; height: 100%. Its background is transparent, so the slide shows through: pick colors that read on the slide. Load libraries from cdn.jsdelivr.net, cdnjs.cloudflare.com or unpkg.com. Parallax bundles some (${EMBED_LIBRARIES}): linked from jsDelivr at a version it has, they load from Parallax's own copy, so the slide also works offline and in exports. It can read the presentation's datasets with parallax.datasets.query("name", { columns, limit }), which returns a promise (list_datasets says what there is). A script that fails leaves the element blank or half drawn: render_slide shows it and lists what it reported (errors with their line in content, files that didn't load, console.error). For plots of functions, a graph element is simpler and follows the theme.
 
 Steps and showing: the page has parallax.steps, parallax.step and parallax.shown. To build the figure as the presenter clicks, give spec steps (how many of the slide's clicks it takes, up to ${MAX_EMBED_STEPS}) and optionally stepStart (the slide's click its step 1 comes at; 1 if left out), and draw in parallax.onStep((step, from) => …), called at once and whenever the step changes, from 0 (before the first click) to steps. Stepping back to a slide jumps straight to the last step, so draw the state of a step and animate only a change of one. Every slide's embeds load when the deck opens, so start an animation in parallax.onShow(fn), not on load, and pause it in parallax.onHide(fn). In the editor and in render_slide pictures the embed is at its last step, so that state should show the whole figure.
 
