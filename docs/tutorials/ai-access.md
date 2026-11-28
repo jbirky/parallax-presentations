@@ -14,7 +14,7 @@ Click the power icon next to an app to turn it off: it loses access at once, eve
 
 ## What the AI can do
 
-Signed in or with a token, an AI has every tool an AI collaborator link has, on any presentation you can open, and four more:
+Signed in or with a token, an AI has every tool an AI collaborator link has, on any presentation you can open, and six more:
 
 | Tool | What it does |
 |------|--------------|
@@ -22,6 +22,8 @@ Signed in or with a token, an AI has every tool an AI collaborator link has, on 
 | `create_deck` | Makes a presentation, blank in a theme or from a template |
 | `list_templates` | Lists the templates it can start from |
 | `list_themes` | Lists the themes, with what each looks like |
+| `save_theme` | Saves a presentation's look to your theme library, or your team's, for your other presentations |
+| `submit_plugin` | Submits a community plugin from its GitHub repo for review, and says where its versions stand |
 
 Each of the other tools names its presentation by id or by its exact title. The AI can view what you can view and change what you can edit: a presentation you only view, or one past your plan's limit, it can read but not change.
 

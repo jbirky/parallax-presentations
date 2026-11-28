@@ -151,7 +151,9 @@ The server describes its tools to the agent. Among them:
 | `add_slide`, `update_slide`, `update_outline`, `apply_edits` | Add and fill slides through their layouts, plan minutes and sections, make several changes at once |
 | `add_element`, `get_element_guide` | Add graphs, equations, tables, code, TikZ, HTML embeds and diagrams |
 | `request_upload`, `add_image`, `add_dataset` | Send pictures and data files from the agent's computer |
+| `import_plot` | Turn a figure saved from matplotlib (SVG or PDF) into a live graph of its data, layer by layer |
 | `check_deck`, `render_slide`, `render_deck` | Find problems on every slide, and see slides as they're presented |
+| `save_theme`, `submit_plugin` | Keep a presentation's look in your theme library; submit a community plugin for review |
 
 ## In Claude or ChatGPT: one presentation
 
