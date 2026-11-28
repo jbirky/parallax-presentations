@@ -12,7 +12,8 @@
 // and blue as offset shadows (index.css, Landing Page). It's dark unless
 // light is chosen, with the nav's toggle or the dashboard's (theme,
 // onToggleTheme; utils/theme.js). The docs
-// open in place of it, at #docs, and the
+// open in place of it, at #docs; the tutorials at #tutorials and
+// #tutorials/<slug> (components/landing/Tutorials.jsx); and the
 // templates at #templates: each opens its own page (/templates/<slug>, which
 // the server builds, server/services/site-pages.js), where people copy it
 // into their account (/templates/<slug>/use, TemplateUsePage.jsx). What
@@ -29,6 +30,7 @@ import SlideFrame from '../components/landing/SlideFrame'
 import FeatureShowcase, { FEATURES } from '../components/landing/FeatureShowcase'
 import WorkflowSteps from '../components/landing/StepDemos'
 import InstallSteps from '../components/landing/InstallSteps'
+import { TutorialList, TutorialPage } from '../components/landing/Tutorials'
 import { api } from '../utils/api'
 import { startAnalytics, track } from '../utils/analytics'
 import { EXAMPLES as BUILT_IN, EXAMPLE_FIELDS, HERO_EXAMPLE } from '../examples/catalog'
@@ -188,6 +190,8 @@ function ExampleViewer({ examples, at, onMove, onClose, guestEnabled, onSignIn }
 export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme }) {
   const [tab, setTab] = useState('home')
   const [docsPage, setDocsPage] = useState(null)
+  // The tutorial open at #tutorials/<slug>; null for the list
+  const [tutorial, setTutorial] = useState(null)
   const [guestEnabled, setGuestEnabled] = useState(false)
   const [field, setField] = useState('All')
   const [viewing, setViewing] = useState(null)
@@ -212,6 +216,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
         setTab('docs')
         const p = h.replace('#docs/', '').replace('#docs', '')
         if (p && p.includes('/')) setDocsPage(p)
+      } else if (h === '#tutorials' || h.startsWith('#tutorials/')) {
+        setTab('tutorials')
+        setTutorial(h.slice('#tutorials/'.length) || null)
       } else if (h === '#templates') {
         setTab('templates')
       } else {
@@ -237,6 +244,10 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
     if (tab !== 'home') switchTab('home')
     setScrollTo({ id })
   }
+  // A tutorial, or the list, opens at its top
+  useEffect(() => {
+    if (tab === 'tutorials') document.querySelector('.landing-scroll')?.scrollTo?.(0, 0)
+  }, [tab, tutorial])
   useEffect(() => {
     if (!scrollTo || tab !== 'home' || (scrollTo.afterCatalog && !catalog)) return
     document.getElementById(scrollTo.id)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
@@ -270,6 +281,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <a className="lp-wide" href="/plugins" onClick={() => track('plugins', { from: 'nav' })}>Plugins</a>
             <button type="button" className="lp-wide" onClick={() => goTo('workflow')}>How it works</button>
             <button type="button" className="lp-wide" onClick={() => { track('ai-agents', { from: 'nav' }); goTo('ai') }}>AI agents</button>
+            <button type="button" className={tab === 'tutorials' ? 'lp-mid on' : 'lp-mid'} aria-current={tab === 'tutorials' ? 'page' : undefined} onClick={() => { track('tutorials', { from: 'nav' }); switchTab('tutorials') }}>Tutorials</button>
             <button type="button" className={tab === 'docs' ? 'on' : ''} aria-current={tab === 'docs' ? 'page' : undefined} onClick={() => { track('docs', { from: 'nav' }); switchTab('docs') }}>Docs</button>
             <a className="lp-wide" href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'nav' })}>GitHub</a>
             {onToggleTheme && (
@@ -287,6 +299,12 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
       <div className="landing-scroll">
         {tab === 'docs' ? (
           <DocsPage initialPage={docsPage} />
+        ) : tab === 'tutorials' ? (
+          <section className="lp-band lp-tutorials" aria-labelledby="lp-tutorials">
+            {tutorial
+              ? <TutorialPage slug={tutorial} tryIt={tryIt} />
+              : <TutorialList onDocs={() => { track('docs', { from: 'tutorials' }); switchTab('docs') }} />}
+          </section>
         ) : tab === 'templates' ? (
           <section className="lp-band lp-templates" id="templates" aria-labelledby="lp-templates">
             <div className="lp-wrap">
@@ -416,6 +434,9 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                 <h2 id="lp-workflow">From outline to talk</h2>
               </div>
               <WorkflowSteps step={step} onStep={setStep} />
+              <p className="lp-workflow-more">
+                <button type="button" className="lp-quiet" onClick={() => { track('tutorials', { from: 'workflow' }); switchTab('tutorials') }}>Each step in the real editor, in the tutorials</button>
+              </p>
             </div>
           </section>
 
@@ -522,11 +543,13 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
                   <li><button type="button" onClick={() => goTo('workflow')}>How it works</button></li>
                   <li><button type="button" onClick={() => { track('ai-agents', { from: 'footer' }); goTo('ai') }}>AI agents</button></li>
                   <li><button type="button" onClick={() => { track('install', { from: 'footer' }); goTo('install') }}>Download</button></li>
+                  <li><button type="button" onClick={() => { track('tutorials', { from: 'footer' }); switchTab('tutorials') }}>Tutorials</button></li>
                   <li><button type="button" onClick={() => { track('docs', { from: 'footer' }); switchTab('docs') }}>Docs</button></li>
                 </ul></div>
                 <div><h4>Project</h4><ul>
                   <li><a href={GITHUB} target="_blank" rel="noopener noreferrer" onClick={() => track('github', { from: 'footer' })}>GitHub</a></li>
                   <li><a href={`${GITHUB}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">License, AGPL-3.0</a></li>
+                  <li><a href="/privacy">Privacy</a></li>
                 </ul></div>
                 <div><h4>Support</h4>
                   <div className="lp-support"><a href={`mailto:${SUPPORT}`} onClick={() => track('support', { how: 'email' })}>{SUPPORT}</a><button type="button" onClick={copySupport}>{copied ? 'Copied' : 'Copy'}</button></div>

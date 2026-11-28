@@ -897,9 +897,9 @@ sup[data-cite] { font-weight: 700; }
   color-scheme: light;
 }
 .landing-page .lp-light.alt { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
-/* The Templates tab is a page of its own, so it follows the theme: ink, or
+/* The Templates and Tutorials tabs are pages of their own, so they follow the theme: ink, or
    in light the alternate paper, its cards on paper */
-[data-theme="light"] .landing-page .lp-templates { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
+[data-theme="light"] .landing-page .lp-templates, [data-theme="light"] .landing-page .lp-tutorials { --lp-bg: #e2e1db; --lp-raise: var(--lp-paper); --lp-card: var(--lp-paper); }
 [data-theme="light"] .landing-page {
   --bg-primary: #ecebe6; --bg-secondary: #f5f4f0; --bg-panel: #e6e5df; --bg-card: #f5f4f0;
   --bg-hover: #e2e1db; --bg-active: #d7d6cf; --border: #cfcec7; --border-light: #bcbbb4;
@@ -1019,6 +1019,72 @@ button.lp-card { font: inherit; padding: 0; width: 100%; cursor: pointer; border
 .lp-card p { font-size: 15px; line-height: 1.5; color: var(--lp-text); }
 .lp-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .lp-tags span { padding: 3px 8px; font-size: 12px; line-height: 1.4; color: var(--lp-text); border: 1px solid var(--lp-line); }
+
+/* Tutorials (components/landing/Tutorials.jsx): the list, then a tutorial
+   as steps, each a screenshot of the editor beside what it shows. The steps'
+   list stays in view beside them where there's room. A pin is a box on a
+   screenshot, numbered as the list beside it is, the one pointed at in blue. */
+.lp-tutorials { min-height: calc(100vh - 64px); }
+.lp-tut-card .lp-thumb img { object-position: left top; }
+.lp-tut-more { margin-top: 40px; font-size: 15px; }
+.lp-workflow-more { margin-top: 28px; }
+.lp-tut-back { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 28px; font-size: 14.5px; font-weight: 500; color: var(--lp-strong); text-decoration: none; }
+.lp-tut-back:hover { text-decoration: underline; text-underline-offset: 4px; }
+.lp-tut-head .lp-ctas { margin-top: 14px; }
+.lp-tut-body { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; align-items: start; margin-top: 72px; }
+.lp-tut-nav { position: sticky; top: 84px; }
+.lp-tut-nav ol { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; border-left: 1px solid var(--lp-line); }
+.lp-tut-nav button { display: flex; gap: 10px; width: 100%; margin-left: -1px; padding: 8px 12px; text-align: left; font-size: 14px; line-height: 1.35; color: var(--lp-text); border-left: 2px solid transparent; }
+.lp-tut-nav button span { flex: none; font: 600 12px/1.6 var(--lp-mono); color: var(--lp-faint); }
+.lp-tut-nav button:hover { color: var(--lp-strong); }
+.lp-tut-nav button[aria-current] { font-weight: 600; color: var(--lp-strong); border-left-color: var(--lp-red); }
+.lp-tut-steps { display: grid; gap: 96px; min-width: 0; }
+.lp-tut-step { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 40px; align-items: start; scroll-margin-top: 84px; }
+.lp-tut-text { display: grid; gap: 14px; align-content: start; min-width: 0; }
+.lp-tut-num { font: 700 44px/1 var(--lp-display); letter-spacing: -0.02em; color: var(--lp-strong); text-shadow: var(--lp-fringe); }
+.lp-tut-text h3 { font-size: 26px; line-height: 1.15; letter-spacing: -0.015em; color: var(--lp-strong); }
+.lp-tut-text > p { font-size: 16px; line-height: 1.6; }
+.lp-tut-where { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.lp-tut-where > span:first-child { margin-right: 4px; font: 600 11.5px/1 var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-tag); }
+.lp-tut-where kbd { padding: 2px 8px; font: 500 13px/1.45 var(--lp-sans); color: var(--lp-strong); background: var(--lp-raise); border: 1px solid var(--lp-line); }
+.lp-tut-where i { margin-right: 6px; font-style: normal; color: var(--lp-faint); }
+.lp-tut-legend { display: grid; gap: 10px; margin: 4px 0 0; padding: 0; list-style: none; }
+.lp-tut-legend li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 14.5px; line-height: 1.5; }
+.lp-tut-legend b, .lp-tut-pin b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font: 700 12px/1 var(--lp-sans); color: #fff; background: var(--lp-red); }
+.lp-tut-legend li.on b { background: var(--lp-blue); }
+.lp-tut-legend li.on span { color: var(--lp-strong); }
+.lp-tut-tip { padding: 12px 14px; font-size: 14.5px; background: var(--lp-raise); border-left: 3px solid var(--lp-blue); }
+.lp-tut-tip b { margin-right: 8px; font: 600 11.5px var(--lp-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--lp-tag); }
+/* A tall shot no taller than about a window */
+.lp-tut-shot { min-width: 0; margin: 0; }
+.lp-tut-shot .lp-tut-zoom { max-width: min(100%, calc(640px * var(--ar, 1.6))); }
+.lp-tut-zoom { position: relative; display: block; width: 100%; padding: 0; cursor: zoom-in; background: #fff; box-shadow: var(--lp-small-shadow); transition: box-shadow 0.15s; }
+.lp-tut-zoom:hover { box-shadow: var(--lp-frame-shadow); }
+.lp-tut-zoom-hint { position: absolute; right: 10px; bottom: 10px; display: grid; place-items: center; width: 30px; height: 30px; color: var(--lp-paper); background: rgba(31, 31, 34, 0.85); opacity: 0; transition: opacity 0.15s; }
+.lp-tut-zoom:hover .lp-tut-zoom-hint, .lp-tut-zoom:focus-visible .lp-tut-zoom-hint { opacity: 1; }
+.lp-tut-img { position: relative; width: 100%; }
+.lp-tut-img img { display: block; width: 100%; height: 100%; }
+.lp-tut-pin { position: absolute; outline: 2px solid var(--lp-red); outline-offset: 3px; box-shadow: 0 0 0 7px rgba(255, 255, 255, 0.45); transition: outline-color 0.15s; }
+.lp-tut-pin b { position: absolute; left: -3px; top: -3px; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px #fff; }
+.lp-tut-pin.on { outline-color: var(--lp-blue); z-index: 1; }
+.lp-tut-pin.on b { background: var(--lp-blue); }
+.lp-tut-end { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 40px; padding-top: 48px; border-top: 1px solid var(--lp-line); }
+.lp-tut-end ul { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.lp-tut-end .lp-card { margin-top: 14px; }
+/* A screenshot full size, as tall as the window allows */
+.lp-tut-zoomed { width: min(1600px, calc(100vw - 32px)); }
+.lp-tut-zoomed-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; padding: 16px; }
+.lp-tut-zoomed .lp-tut-img { width: min(100%, calc((100vh - 140px) * var(--ar, 1.6))); margin: 0 auto; background: #fff; }
+@media (max-width: 1180px) {
+  .lp-tut-body { grid-template-columns: minmax(0, 1fr); margin-top: 56px; }
+  .lp-tut-nav { display: none; }
+}
+@media (max-width: 900px) {
+  .lp-tut-step { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .lp-tut-steps { gap: 72px; }
+  .lp-tut-end, .lp-tut-zoomed-body { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) { .lp-tut-pin b { width: 18px; height: 18px; font-size: 10.5px; } .lp-tut-num { font-size: 36px; } }
 
 /* An example, open */
 .lp-viewer { width: min(1120px, calc(100vw - 32px)); max-height: calc(100vh - 32px); margin: auto; border: 1px solid var(--lp-line); background: var(--lp-bg); color: var(--lp-text); overflow: auto; }

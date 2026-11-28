@@ -211,6 +211,32 @@ describe('the landing page', () => {
     expect(track).toHaveBeenLastCalledWith('open-example', { example: 'chemistry', from: 'viewer' })
   })
 
+  it('opens the tutorials, and a tutorial, from the address', async () => {
+    window.location.hash = '#tutorials'
+    await mount()
+    expect(el.querySelector('#lp-tutorials').textContent).toBe('Tutorials')
+    expect(el.querySelectorAll('.lp-tut-card').length).toBeGreaterThan(0)
+    expect([...el.querySelectorAll('.lp-links button')].find(b => b.textContent === 'Tutorials').getAttribute('aria-current')).toBe('page')
+    await act(async () => { window.location.hash = '#tutorials/first-talk'; window.dispatchEvent(new HashChangeEvent('hashchange')) })
+    expect(el.querySelector('#lp-tutorials').textContent).toBe('Your first talk')
+    expect(el.querySelectorAll('.lp-tut-step').length).toBeGreaterThan(1)
+    await act(async () => { window.location.hash = '#tutorials'; window.dispatchEvent(new HashChangeEvent('hashchange')) })
+    expect(el.querySelector('.lp-tut-step')).toBeNull()
+  })
+
+  it('leads to the tutorials from the nav, the steps of a talk and the footer', async () => {
+    track.mockClear()
+    await mount()
+    await act(async () => [...el.querySelectorAll('.lp-workflow-more button')][0].click())
+    expect(window.location.hash).toBe('#tutorials')
+    expect(track).toHaveBeenLastCalledWith('tutorials', { from: 'workflow' })
+    expect(el.querySelector('.lp-tut-card')).not.toBeNull()
+    await act(async () => [...el.querySelectorAll('.lp-links button')].find(b => b.textContent === 'Docs').click())
+    await act(async () => [...el.querySelectorAll('.lp-links button')].find(b => b.textContent === 'Tutorials').click())
+    expect(track).toHaveBeenLastCalledWith('tutorials', { from: 'nav' })
+    expect(window.location.hash).toBe('#tutorials')
+  })
+
   it('opens the docs in place, and comes back to a section', async () => {
     await mount()
     await act(async () => [...el.querySelectorAll('.lp-links button')].find(b => b.textContent === 'Docs').click())
