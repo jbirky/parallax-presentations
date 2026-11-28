@@ -219,7 +219,7 @@ app.get('/api/docs/sidebar', (req, res) => {
       { text: 'Editing with Others', link: 'tutorials/editing-with-others' },
       { text: 'AI Collaborators', link: 'tutorials/ai-collaborators' },
       { text: 'AI Access', link: 'tutorials/ai-access' },
-      { text: 'AI Agents: Claude Code & MCP', link: 'tutorials/ai-agents' },
+      { text: 'AI Agents: Claude & MCP', link: 'tutorials/ai-agents' },
       { text: 'Equation Palette', link: 'tutorials/equation-palette' },
       { text: 'Export & Sharing', link: 'features/export' },
       { text: 'Feynman Diagrams', link: 'tutorials/feynman-diagrams' },

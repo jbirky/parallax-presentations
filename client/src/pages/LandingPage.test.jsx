@@ -307,7 +307,7 @@ describe('what sets Parallax apart', () => {
     expect(ways[0].classList.contains('lead')).toBe(true)
     expect(ways[0].querySelector('pre').textContent).toContain('/plugin install parallax@parallax-agent')
     // The server's address is this site's, as the hosted site and dev differ
-    expect(ways[1].querySelector('pre').textContent).toContain(`${window.location.origin}/mcp\nAuthorization: Bearer plx_pat_`)
+    expect(ways[1].querySelector('pre').textContent).toBe(`${window.location.origin}/mcp`)
     expect(ways.map(w => w.querySelector('a').getAttribute('href'))).toEqual(['https://github.com/jbirky/parallax-agent', '#docs/tutorials/ai-access', '#docs/tutorials/ai-collaborators'])
     expect(ways[0].querySelector('a').getAttribute('target')).toBe('_blank')
     expect(el.querySelector('.lp-agents-more a').getAttribute('href')).toBe('#docs/tutorials/ai-agents')

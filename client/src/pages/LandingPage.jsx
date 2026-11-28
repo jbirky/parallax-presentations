@@ -92,20 +92,20 @@ const PLANS = [
 
 // The ways to connect an AI agent (#ai): what each reaches, what to type
 // (given the site's address, as the hosted site and dev differ) and where to
-// read more; the Claude Code plugin (github.com/jbirky/parallax-agent) leads.
+// read more; the plugin for Claude (github.com/jbirky/parallax-agent) leads.
 // The tutorial is docs/tutorials/ai-agents.md.
 const AGENT_WAYS = [
   {
-    id: 'plugin', label: 'Claude Code', name: 'The Parallax plugin', lead: true,
-    note: 'Works across your account, and knows how a talk comes together: an outline with minutes first, a talk from an arXiv paper with its figures, a review of a whole deck.',
+    id: 'plugin', label: 'Claude', name: 'The Parallax plugin', lead: true,
+    note: 'For claude.ai, Cowork and Claude Code. Sign in with your Parallax account, and Claude knows how a talk comes together: an outline with minutes first, a talk from an arXiv paper with its figures, a review of a whole deck.',
     code: () => '/plugin marketplace add jbirky/parallax-agent\n/plugin install parallax@parallax-agent\n/parallax:from-paper 2305.16790 12',
     link: ['The plugin on GitHub', 'https://github.com/jbirky/parallax-agent'],
   },
   {
-    id: 'mcp', label: 'Any MCP client', name: 'Your account’s MCP server',
-    note: 'Make an AI access token from your avatar menu, and connect any agent that can send it as a header.',
-    code: site => `${site}/mcp\nAuthorization: Bearer plx_pat_…`,
-    link: ['AI access tokens', '#docs/tutorials/ai-access'],
+    id: 'mcp', label: 'ChatGPT and other MCP apps', name: 'Your account’s MCP server',
+    note: 'Add it as a connector and sign in with your Parallax account. For a script, make an AI access token from your avatar menu and send it as a header.',
+    code: site => `${site}/mcp`,
+    link: ['AI access', '#docs/tutorials/ai-access'],
   },
   {
     id: 'link', label: 'Claude and ChatGPT', name: 'One presentation, in a chat',
@@ -424,7 +424,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
               <div className="lp-head lp-head-wide">
                 <div className="lp-label">With AI</div>
                 <h2 id="lp-ai">Build a talk with <ParallaxWords>an AI agent</ParallaxWords></h2>
-                <p>Connect Claude Code, Claude or ChatGPT to Parallax. The agent outlines the talk with you, builds the slides while you watch in the editor, and checks each one. It runs in your own AI app; Parallax gives it the tools, and saves a version first so you can undo its work.</p>
+                <p>Connect Claude or ChatGPT to Parallax. The agent outlines the talk with you, builds the slides while you watch in the editor, and checks each one. It runs in your own AI app; Parallax gives it the tools, and saves a version first so you can undo its work.</p>
               </div>
               <div className="lp-agents">
                 {AGENT_WAYS.map(way => (

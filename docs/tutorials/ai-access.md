@@ -1,43 +1,20 @@
 # AI Access
 
-An AI access token lets an AI agent work in your whole account, as you can: list your presentations, make new ones from a template or a theme, and change the ones you can edit while you watch. It's made for Claude Code with the Parallax plugin, which also teaches Claude how to build a good talk: the [AI Agents](./ai-agents.md) tutorial walks through it. AI access is part of the cloud version of Parallax.
+**AI access**, in your avatar menu on the dashboard, is where you see and control the AI agents that work in your whole account. An agent there can list your presentations, make new ones from a template or a theme, and change the ones you can edit while you watch. AI access is part of the cloud version of Parallax.
+
+Most agents sign in with your Parallax account: Claude with the Parallax plugin, in claude.ai, the desktop app, Cowork or Claude Code, and ChatGPT or another MCP app through your account's MCP server. The [AI Agents](./ai-agents.md) tutorial walks through each. For a script, or an agent that can't sign in, you make an AI access token instead.
 
 To share one presentation with an AI chat app such as claude.ai or ChatGPT, use an [AI collaborator link](./ai-collaborators.md) instead.
 
-## Making a token
+## Connected apps
 
-1. On your dashboard, click your avatar at the top right and choose **AI access**.
-2. Give the token a name, such as "Claude Code", and choose how long it lasts: 30 days, 90 days or a year.
-3. Leave **Can make and change presentations** on, or turn it off for a token that only reads.
-4. Click **Make token**, then **Copy**.
+Each app you sign in from shows under **Connected apps** in **AI access**, with its name, its site and when it was last used. A connected app can make and change presentations, as a token with **Can make and change presentations** can.
 
-The token is shown only once. If you lose it, make a new one and revoke the old one.
-
-## Using it in Claude Code
-
-Add the Parallax plugin in Claude Code, once:
-
-```text
-/plugin marketplace add jbirky/parallax-agent
-/plugin install parallax@parallax-agent
-```
-
-Paste the token when the plugin asks for it. Claude Code keeps it in your system's credential store, not in a file. To give it a new token later, run `/plugin configure parallax@parallax-agent`, then `/mcp` to reconnect.
-
-Run `/parallax:connect` to check the connection, then ask for a talk: `/parallax:new-talk an introduction to RC filters, 15 minutes`.
-
-Without the plugin, add Parallax as an MCP server with the token as a header:
-
-```bash
-claude mcp add --transport http parallax https://parallax-presentations.com/mcp \
-  --header "Authorization: Bearer plx_pat_…"
-```
-
-Any other MCP client that can send a header works the same way: the server is `https://parallax-presentations.com/mcp`, with `Authorization: Bearer <token>`.
+Click the power icon next to an app to turn it off: it loses access at once, even if it signs in again. **Allow again** lets it back in.
 
 ## What the AI can do
 
-With a token, an AI has every tool an AI collaborator link has, on any presentation you can open, and four more:
+Signed in or with a token, an AI has every tool an AI collaborator link has, on any presentation you can open, and four more:
 
 | Tool | What it does |
 |------|--------------|
@@ -48,16 +25,32 @@ With a token, an AI has every tool an AI collaborator link has, on any presentat
 
 Each of the other tools names its presentation by id or by its exact title. The AI can view what you can view and change what you can edit: a presentation you only view, or one past your plan's limit, it can read but not change.
 
-Its changes appear in the editor as it makes them, under the token's name in the avatars, and a version is saved before each session on a presentation, so you can undo them from **History**.
+Its changes appear in the editor as it makes them, under the app's or token's name in the avatars, and a version is saved before each session on a presentation, so you can undo them from **History**.
 
 A new presentation counts toward your plan like any other. When you're at your plan's limit, the AI is refused rather than making one that would turn your oldest presentation read-only.
 
-## Revoking a token
+## AI access tokens
+
+### Making a token
+
+1. On your dashboard, click your avatar at the top right and choose **AI access**.
+2. Give the token a name, such as "Lab scripts", and choose how long it lasts: 30 days, 90 days or a year.
+3. Leave **Can make and change presentations** on, or turn it off for a token that only reads.
+4. Click **Make token**, then **Copy**.
+
+The token is shown only once. If you lose it, make a new one and revoke the old one.
+
+### Using a token
+
+Send the token to your account's MCP server, `https://parallax-presentations.com/mcp`, in the header `Authorization: Bearer plx_pat_…`. In Claude Code, for example:
+
+```bash
+claude mcp add --transport http parallax https://parallax-presentations.com/mcp \
+  --header "Authorization: Bearer plx_pat_…"
+```
+
+Any other MCP client that can send a header works the same way.
+
+### Revoking a token
 
 Open **AI access** again and click the trash icon next to the token. The agent using it loses access at once and leaves the avatars.
-
-## Connected apps
-
-Chat apps such as claude.ai and ChatGPT don't use a token: you add `https://parallax-presentations.com/mcp` to the app as a connector, and sign in to Parallax when it asks. The [AI Agents](./ai-agents.md#in-claude-ai-or-chatgpt-your-whole-account) tutorial has the steps.
-
-Each app you sign in shows under **Connected apps** in **AI access**, with its name, its site and when it was last used. A connected app can make and change presentations, as a token with **Can make and change presentations** can. Click the power icon next to an app to turn it off: it loses access at once. **Allow again** lets it back in.

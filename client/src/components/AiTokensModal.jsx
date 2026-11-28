@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 Jessica Birky
 
-// AI access tokens (cloud only): a token for the person's whole account that
-// an AI agent, such as Claude Code with the parallax plugin, sends to the
-// account-level MCP server at /mcp (server/mcp/account.js), so it can list,
-// make and change their presentations as they can. The person names a token,
-// picks how long it lasts and whether it may change anything, and copies it,
-// once; the list below revokes tokens. AI chat apps such as claude.ai sign
-// in to /mcp instead (server/mcp/oauth.js); the apps the person connected
-// are listed too, to turn off or allow again. Opened from the dashboard's
-// account menu, AI access.
+// AI access (cloud only): the AI agents that work in the person's whole
+// account through the account-level MCP server at /mcp (server/mcp/account.js),
+// listing, making and changing their presentations as they can. Most sign in
+// (server/mcp/oauth.js): Claude with the parallax plugin, ChatGPT and other MCP
+// apps. Those connected apps are listed first, to turn off or allow again.
+// For a script or an agent that can't sign in, the person makes a token: names
+// it, picks how long it lasts and whether it may change anything, and copies
+// it, once; the list below revokes tokens. Opened from the dashboard's account
+// menu, AI access.
 
 import { useEffect, useState } from 'react'
 import { X, Copy, Bot, Trash2, Power } from 'lucide-react'
@@ -22,23 +22,13 @@ const LIFETIMES = [[30, '30 days'], [90, '90 days'], [365, '1 year']]
 const PROD = 'https://parallax-presentations.com'
 export const PLUGIN_REPO = 'jbirky/parallax-agent'
 
-// How to give the token to Claude Code: the parallax plugin asks for it when
-// it's installed, and keeps it in the system's credential store (with the
-// site, when it isn't the main one); or as a plain MCP server
+// How to use a token: any MCP client that sends headers, such as Claude Code
+// with the server added by hand
 export function SetupSteps({ secret, server }) {
-  const origin = server.replace(/\/mcp$/, '')
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div>
-        <p style={muted}><strong>Claude Code, with the Parallax plugin</strong>: add it, and paste the token when it asks.</p>
-        <code style={codeStyle}>{`/plugin marketplace add ${PLUGIN_REPO}\n/plugin install parallax@parallax-agent`}</code>
-        {origin !== PROD && <p style={{ ...muted, marginTop: 6 }}>Set its Parallax site option to <code>{origin}</code>.</p>}
-        <p style={{ ...muted, marginTop: 6 }}>Already installed? <code>/plugin configure parallax@parallax-agent</code> takes the new token.</p>
-      </div>
-      <div>
-        <p style={muted}><strong>Any MCP client that sends headers</strong>: the server is {server}, with the header <code>Authorization: Bearer &lt;token&gt;</code>. In Claude Code without the plugin:</p>
-        <code style={codeStyle}>{`claude mcp add --transport http parallax ${server} --header "Authorization: Bearer ${secret}"`}</code>
-      </div>
+    <div>
+      <p style={muted}>Send it to {server} in the header <code>Authorization: Bearer &lt;token&gt;</code>. In Claude Code, for example:</p>
+      <code style={codeStyle}>{`claude mcp add --transport http parallax ${server} --header "Authorization: Bearer ${secret}"`}</code>
     </div>
   )
 }
@@ -48,7 +38,7 @@ export default function AiTokensModal({ onClose }) {
   const [apps, setApps] = useState([])
   const [signIn, setSignIn] = useState(false)
   const [server, setServer] = useState('')
-  const [name, setName] = useState('Claude Code')
+  const [name, setName] = useState('')
   const [days, setDays] = useState(90)
   const [writes, setWrites] = useState(true)
   const [made, setMade] = useState(null) // the token just made, with its secret
@@ -92,11 +82,55 @@ export default function AiTokensModal({ onClose }) {
           <button className="btn btn-ghost" onClick={onClose} style={{ padding: 4 }} aria-label="Close"><X size={16} /></button>
         </div>
         <p style={muted}>
-          A token lets an AI agent, such as Claude Code with the Parallax plugin, work in your account as you can: list your presentations,
-          make new ones, and change the ones you can edit, live. A version is saved before each session, so you can undo its changes from History.
-          Anyone with a token can use it until it expires or you revoke it. To share one presentation with an AI chat app, use its AI collaborator link instead.
+          AI agents here work in your account as you can: list your presentations, make new ones, and change the ones you can edit, live.
+          A version is saved before each session, so you can undo their changes from History.
+          To share one presentation with an AI chat app, use its AI collaborator link instead.
         </p>
 
+        {(signIn || apps.length > 0) && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Connected apps</div>
+            {signIn && server && (
+              <p style={{ ...muted, marginBottom: 6 }}>
+                Apps sign in to Parallax, with no token:{' '}
+                {server === `${PROD}/mcp` && <>Claude with the Parallax plugin (add the marketplace <code>{PLUGIN_REPO}</code> in claude.ai or Claude Code), and </>}
+                ChatGPT or another MCP app with <code>{server}</code> added as a connector.
+                Each app you connect can make and change presentations, and shows here.
+              </p>
+            )}
+            {apps.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {apps.map(app => (
+                  <li key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', opacity: app.off ? 0.6 : 1 }}>
+                    <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Bot size={14} /></span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {app.name} {app.host && <span style={{ ...muted, fontSize: 11 }}>{app.host}</span>}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>{app.off ? 'Turned off' : app.lastUsedAt ? `Signed in · used ${ago(app.lastUsedAt)}` : 'Signed in'}</div>
+                    </div>
+                    {app.off ? (
+                      <button className="btn btn-ghost" disabled={busy} style={{ fontSize: 12 }}
+                        onClick={() => act(async () => { await api.allowAiApp(app.id); await load() })}>
+                        Allow again
+                      </button>
+                    ) : (
+                      <button className="btn btn-ghost" disabled={busy} title="Stop this app working in your account" aria-label={`Turn off ${app.name}`} style={{ padding: 4, color: 'var(--danger)' }}
+                        onClick={() => {
+                          if (!confirm(`Turn off “${app.name}”? It loses access at once, until you allow it again here.`)) return
+                          act(async () => { await api.revokeAiToken(app.id); await load() })
+                        }}>
+                        <Power size={14} />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: -8 }}>Tokens</div>
+        <p style={muted}>For a script, or an agent that can&apos;t sign in. Anyone with a token can use it until it expires or you revoke it.</p>
         {made ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 14, borderRadius: 8, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)' }}>
             <p style={muted}><strong>{made.name}</strong>: copy the token now. It won&apos;t be shown again.</p>
@@ -112,7 +146,7 @@ export default function AiTokensModal({ onClose }) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <label style={{ flex: '1 1 180px', display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
                 Name
-                <input className="prop-input" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Claude Code"
+                <input className="prop-input" value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Lab scripts"
                   onKeyDown={e => { if (e.key === 'Enter' && name.trim() && !busy) make() }} />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
@@ -159,46 +193,6 @@ export default function AiTokensModal({ onClose }) {
             </ul>
           )}
         </div>
-        {(signIn || apps.length > 0) && (
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Connected apps</div>
-            {signIn && server && (
-              <p style={{ ...muted, marginBottom: 6 }}>
-                AI chat apps such as claude.ai and ChatGPT need no token: add <code>{server}</code> as a custom connector, and sign in to Parallax when it asks.
-                Each app you connect can make and change presentations, and shows here.
-              </p>
-            )}
-            {apps.length > 0 && (
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {apps.map(app => (
-                  <li key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', opacity: app.off ? 0.6 : 1 }}>
-                    <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Bot size={14} /></span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {app.name} {app.host && <span style={{ ...muted, fontSize: 11 }}>{app.host}</span>}
-                      </div>
-                      <div style={{ fontSize: 11, opacity: 0.7 }}>{app.off ? 'Turned off' : app.lastUsedAt ? `Signed in · used ${ago(app.lastUsedAt)}` : 'Signed in'}</div>
-                    </div>
-                    {app.off ? (
-                      <button className="btn btn-ghost" disabled={busy} style={{ fontSize: 12 }}
-                        onClick={() => act(async () => { await api.allowAiApp(app.id); await load() })}>
-                        Allow again
-                      </button>
-                    ) : (
-                      <button className="btn btn-ghost" disabled={busy} title="Stop this app working in your account" aria-label={`Turn off ${app.name}`} style={{ padding: 4, color: 'var(--danger)' }}
-                        onClick={() => {
-                          if (!confirm(`Turn off “${app.name}”? It loses access at once, until you allow it again here.`)) return
-                          act(async () => { await api.revokeAiToken(app.id); await load() })
-                        }}>
-                        <Power size={14} />
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
         {server && !made && <p style={muted}>Agents send tokens to {server}.</p>}
         {error && <p role="alert" style={{ ...muted, color: '#dc2626' }}>{error}</p>}
       </div>
