@@ -546,6 +546,9 @@ describe('AI access tokens', { skip }, () => {
     const graph = live.deck().slides[0].elements.find(e => e.type === 'graph')
     assert.deepEqual(graph.expressions.map(e => [e.data.dataset, e.data.mark, e.step]).sort((a, b) => a[2] - b[2]), [['decay', 'line', 1], ['decay', 'points', 2]])
     assert.equal(graph.background, 'transparent')
+    assert.equal(graph.equalScale, false, 'the figure keeps its own scales')
+    assert.ok(Math.abs(graph.view.xMin + 0.5) < 0.01 && Math.abs(graph.view.xMax - 10.5) < 0.01, JSON.stringify(graph.view))
+    assert.ok(Math.abs(graph.view.yMin + 0.153) < 0.01 && Math.abs(graph.view.yMax - 2.103) < 0.01, JSON.stringify(graph.view))
     assert.ok(graph.width <= 840 && graph.y >= 130, JSON.stringify([graph.x, graph.y, graph.width, graph.height]))
     assert.match(toolText(await callTool(secret, 'list_datasets', { deck: id })), /decay/)
 
@@ -570,6 +573,7 @@ describe('AI access tokens', { skip }, () => {
     const fromPdf = await callTool(secret, 'import_plot', { deck: id, slide: 1, upload })
     assert.equal(fromPdf.body.result.isError, undefined, toolText(fromPdf))
     assert.match(toolText(fromPdf), /^Read a PDF figure/)
+    assert.match(toolText(fromPdf), /dataset "decay_3"/, 'named after the file it was sent as')
     const notPdf = /curl -sS -T "x.pdf" (\S+)/.exec(toolText(await callTool(secret, 'request_upload', { deck: id, filename: 'x.pdf' })))[1].replace('https://parallax-presentations.com', t.base)
     assert.equal((await fetch(notPdf, { method: 'PUT', body: png(10, 10) })).status, 415)
 

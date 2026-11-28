@@ -687,6 +687,13 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     if (info.width && info.height) sizes.set(src, { width: info.width, height: info.height })
     if (sizes.size > 2000) sizes.delete(sizes.keys().next().value)
   }
+  // The names files were sent under (request_upload's filename), by their
+  // paths, so import_plot names a dataset after a figure's file
+  const uploadNames = new Map()
+  const noteName = (src, name) => {
+    uploadNames.set(src, name)
+    if (uploadNames.size > 2000) uploadNames.delete(uploadNames.keys().next().value)
+  }
   // The person whose access a link or token has on its presentation
   const accessOf = link => presentationAccess(storage, link.deckId, link.userId || link.ownerId)
   // Why a link or token can't change its presentation now, or null
@@ -817,8 +824,10 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
   }
 
   // ── import_plot: a matplotlib figure as a Graph and its dataset ──
-  const plotWords = n => (Number.isFinite(n) ? String(Number(n.toPrecision(4))) : String(n))
-  const axisText = (name, a) => `${name} axis${a.label ? ` "${a.label}"` : ''} from ${plotWords(a.range[0])} to ${plotWords(a.range[1])}${a.scale === 'log' ? ', logarithmic' : ''}${a.categories?.length ? ` (categories ${a.categories.slice(0, 8).join(', ')})` : ''}`
+  // An axis's ends, to 4 figures, with a 0 that reads as one (matplotlib's
+  // 2.2e-15 for a bar chart's floor)
+  const plotWords = (n, span) => (!Number.isFinite(n) ? String(n) : Math.abs(n) < Math.abs(span) * 1e-9 ? '0' : String(Number(n.toPrecision(4))))
+  const axisText = (name, a) => `${name} axis${a.label ? ` "${a.label}"` : ''} from ${plotWords(a.range[0], a.range[1] - a.range[0])} to ${plotWords(a.range[1], a.range[1] - a.range[0])}${a.scale === 'log' ? ', logarithmic' : ''}${a.categories?.length ? ` (categories ${a.categories.slice(0, 8).join(', ')})` : ''}`
   const panelLabel = (p, i) => `${i + 1}: ${shared.panelNamed(p)}${p.main ? ' (the main one)' : ''}${p.layers?.length ? `, ${p.layers.map(l => l.name).join(', ')}` : ', no layers that read'}`
 
   async function importPlot(link, input) {
@@ -842,7 +851,8 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       }
       bytes = await uploads.read(link.deckId, src, limit)
       if (!bytes) return failure('That upload couldn\'t be read back. Send the figure again with request_upload.')
-      fileName = require('path').basename(src)
+      // Stored under a new name: the one it was sent under, if known
+      fileName = uploadNames.get(src) || ''
     } else if (input.url !== undefined) {
       let url
       try { url = new URL(input.url) } catch { return failure('url must be an https address.') }
@@ -906,7 +916,8 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
     const { graph, size } = added.name !== base ? shared.plotToGraph(plot, { datasetName: added.name, choices }) : first
     const spec = {
       expressions: graph.expressions.map(({ id, until, width, ...line }) => ({ ...line, ...(width !== undefined && { width: Math.min(10, width) }) })),
-      view: graph.view, grid: graph.grid, axes: true, axisNumbers: true, xLabel: graph.xLabel, yLabel: graph.yLabel, background: 'transparent',
+      view: graph.view, equalScale: false, grid: graph.grid, axes: true, axisNumbers: true, showSliders: false, lockView: false,
+      xLabel: graph.xLabel, yLabel: graph.yLabel, background: 'transparent',
       ...(graph.xScale && { xScale: graph.xScale }), ...(graph.yScale && { yScale: graph.yScale }),
     }
     // As add_image places a picture: as large as fits under a title, keeping its shape
@@ -973,6 +984,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
         if (plots.plotKind(bytes) !== 'pdf') return res.status(415).json({ error: 'That isn\'t a PDF.' })
         if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
         const src = await uploads.store({ buffer: bytes, filename: `${base}.pdf`, deckId: link.deckId, ownerId: access.ownerId })
+        noteName(src, base)
         return res.status(201).json({ upload: src, type: 'application/pdf', bytes: bytes.length, next: 'Give this upload path to import_plot.' })
       }
       const info = images.imageInfo(bytes)
@@ -980,6 +992,7 @@ function createMcpRoute({ storage, origin, collab, deckPage, sandbox = 'sandbox 
       if (!(await loadDeck(link))) return res.status(404).json({ error: goneOf(link) })
       const src = await uploads.store({ buffer: bytes, filename: base + info.ext, deckId: link.deckId, ownerId: access.ownerId })
       noteSize(src, info)
+      noteName(src, base)
       res.status(201).json({ upload: src, type: info.mime, width: info.width, height: info.height, bytes: bytes.length })
     } catch (err) {
       console.error('MCP upload failed:', err.message)
