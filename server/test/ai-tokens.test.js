@@ -15,6 +15,12 @@ safeFetchModule.safeFetch = async (url, opts) => {
   if (url === 'https://pictures.test/chart.png') return { status: 200, headers: {}, body: png(300, 100) }
   if (url === 'https://pictures.test/page.html') return { status: 200, headers: {}, body: Buffer.from('<html></html>') }
   if (url === 'https://pictures.test/missing.png') return { status: 404, headers: {}, body: Buffer.alloc(0) }
+  // An app's Client ID Metadata Document, and Clerk's authorization server
+  // metadata (server/mcp/oauth.js)
+  if (url === 'https://apps.test/claude.json') return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ client_id: url, client_name: 'Claude' })) }
+  if (url === 'https://clerk.parallax.test/.well-known/oauth-authorization-server') {
+    return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ issuer: 'https://clerk.parallax.test', client_id_metadata_document_supported: true })) }
+  }
   return realSafeFetch(url, opts)
 }
 const { DB, startCloudServer, until } = require('./helpers')
@@ -143,6 +149,66 @@ describe('AI access tokens', { skip }, () => {
     const expired = (await makeToken(me, { name: 'Old' })).body
     await pool.query("UPDATE ai_tokens SET expires_at = NOW() - INTERVAL '1 minute' WHERE id = $1", [expired.id])
     assert.equal((await rpc(expired.secret, 'initialize')).status, 401)
+  })
+
+  it('says how an AI chat app signs in, and lets it sign in with OAuth', async () => {
+    const meta = await fetch(`${t.base}/.well-known/oauth-protected-resource/mcp`)
+    assert.equal(meta.status, 200)
+    assert.deepEqual(await meta.json(), {
+      resource: 'https://parallax-presentations.com/mcp',
+      authorization_servers: ['https://clerk.parallax.test'],
+      bearer_methods_supported: ['header'],
+      scopes_supported: ['profile', 'email'],
+      resource_name: 'Parallax',
+      resource_documentation: 'https://parallax-presentations.com/docs/tutorials/ai-agents',
+    })
+    assert.equal((await fetch(`${t.base}/.well-known/oauth-protected-resource`)).status, 200)
+    const server = await (await fetch(`${t.base}/.well-known/oauth-authorization-server`)).json()
+    assert.equal(server.issuer, 'https://clerk.parallax.test')
+
+    const none = await rpc(null, 'initialize', {})
+    assert.equal(none.status, 401)
+    assert.equal(none.headers.get('www-authenticate'), 'Bearer resource_metadata="https://parallax-presentations.com/.well-known/oauth-protected-resource/mcp"')
+    const refused = await rpc('oat-not-one', 'initialize', {})
+    assert.equal(refused.status, 401)
+    assert.match(refused.headers.get('www-authenticate'), /^Bearer error="invalid_token", resource_metadata=/)
+
+    // Someone signing in through Claude for the first time gets an account,
+    // and Claude a row under AI access
+    const me = t.user('chatter')
+    const token = `oat:${me}:https://apps.test/claude.json`
+    const init = await initialize(token)
+    assert.equal(init.status, 200, JSON.stringify(init.body))
+    assert.equal(t.clerkOptions.authenticateRequest.acceptsToken, 'oauth_token')
+    assert.equal(t.clerkOptions.authenticateRequest.audience, 'https://parallax-presentations.com/mcp')
+    const checked = await fetch(`${t.base}/mcp`, { headers: { Authorization: `Bearer ${token}` } })
+    assert.deepEqual(await checked.json(), { server: 'Parallax', token: 'Claude', scopes: ['decks:read', 'decks:write'] })
+    const listed = (await call(me, 'GET', '/api/me/ai-tokens')).body
+    assert.equal(listed.signIn, true)
+    assert.deepEqual(listed.tokens, [])
+    assert.deepEqual(listed.apps.map(a => [a.name, a.host, a.off]), [['Claude', 'apps.test', false]])
+
+    // It works as a token does, under its own name
+    const made = await callTool(token, 'create_deck', { title: 'From claude.ai' })
+    assert.equal(made.body.result.isError, undefined, toolText(made))
+    const id = /id, the deck for the other tools: (\S+)/.exec(toolText(made))[1]
+    const added = await callTool(token, 'add_slide', { deck: id, layout: 'title-content', title: 'Hello' })
+    assert.match(toolText(added), /a version named "Before Claude's edits" was saved/)
+    // A client registered with Clerk goes by the name Clerk has for it
+    assert.equal((await initialize(`oat:${me}:client_abc`)).status, 200)
+    assert.deepEqual((await call(me, 'GET', '/api/me/ai-tokens')).body.apps.map(a => a.name).sort(), ['App client_abc', 'Claude'])
+
+    // Turned off, it can't sign in, until it's allowed again
+    const app = listed.apps[0]
+    assert.equal((await call(t.user('other'), 'DELETE', `/api/me/ai-tokens/${app.id}`)).status, 404)
+    assert.equal((await call(me, 'DELETE', `/api/me/ai-tokens/${app.id}`)).status, 200)
+    const off = await rpc(token, 'initialize', {})
+    assert.equal(off.status, 403)
+    assert.match(off.body.error, /Claude was turned off in Parallax, under AI access/)
+    assert.equal((await call(me, 'GET', '/api/me/ai-tokens')).body.apps.find(a => a.id === app.id).off, true)
+    assert.equal((await call(me, 'POST', `/api/me/ai-tokens/${app.id}/allow`)).status, 200)
+    assert.equal((await initialize(token)).status, 200)
+    assert.equal((await call(me, 'POST', `/api/me/ai-tokens/${app.id}/allow`)).status, 404)
   })
 
   it('answers MCP with the account tools, and the deck tools taking a deck', async () => {

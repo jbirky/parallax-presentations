@@ -331,6 +331,7 @@ export const api = {
   getAiTokens: () => authFetch(`${BASE}/me/ai-tokens`).then(r => checked(r, 'Failed')),
   createAiToken: ({ name, days, scopes }) => authFetch(`${BASE}/me/ai-tokens`, json('POST', { name, days, scopes })).then(r => checked(r, 'Failed')),
   revokeAiToken: (tokenId) => authFetch(`${BASE}/me/ai-tokens/${tokenId}`, { method: 'DELETE' }).then(r => checked(r, 'Failed')),
+  allowAiApp: (appId) => authFetch(`${BASE}/me/ai-tokens/${appId}/allow`, { method: 'POST' }).then(r => checked(r, 'Failed')),
   getPresentationDatasets: (pid) => authFetch(`${BASE}/presentations/${pid}/datasets`).then(safeJson),
   getPresentationDatasetData: (pid, datasetId, params = {}) => {
     const qs = new URLSearchParams(params).toString()

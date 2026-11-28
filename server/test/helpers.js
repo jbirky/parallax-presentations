@@ -25,6 +25,8 @@ async function startCloudServer() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'parallax-test-'))
   Object.assign(process.env, {
     PARALLAX_MODE: 'cloud', PARALLAX_DB: 'postgres', DATABASE_URL: DB_UNVERIFIED, NODE_ENV: 'test',
+    // Clerk's Frontend API is https://clerk.parallax.test (server/mcp/oauth.js)
+    CLERK_PUBLISHABLE_KEY: 'pk_test_' + Buffer.from('clerk.parallax.test$').toString('base64'),
     SLIDES_DATA_DIR: path.join(tmp, 'data'), SLIDES_UPLOADS_DIR: path.join(tmp, 'uploads'),
   })
   delete process.env.PARALLAX_STORAGE
@@ -44,10 +46,22 @@ async function startCloudServer() {
     getAuth: req => ({ userId: req.testUser }),
     requireAuth: () => (req, res, next) => next(),
     verifyToken: async (token, options) => { clerkOptions.verifyToken = options; return { sub: token } },
-    clerkClient: { users: { getUser: async id => ({
-      emailAddresses: clerkEmails[id] || [{ emailAddress: `${id}@test.local`, verification: { status: 'verified' } }],
-      firstName: id, lastName: '', imageUrl: '',
-    }) } },
+    clerkClient: {
+      users: { getUser: async id => ({
+        emailAddresses: clerkEmails[id] || [{ emailAddress: `${id}@test.local`, verification: { status: 'verified' } }],
+        firstName: id, lastName: '', imageUrl: '',
+      }) },
+      // An OAuth access token Clerk gave an app (server/mcp/oauth.js) is, in
+      // these tests, "oat:<Clerk ID>:<client id>"
+      authenticateRequest: async (request, options) => {
+        clerkOptions.authenticateRequest = { url: request.url, ...options }
+        const m = /^Bearer oat:([^:]+):(.+)$/.exec(request.headers.get('authorization') || '')
+        return m
+          ? { isAuthenticated: true, toAuth: () => ({ tokenType: 'oauth_token', userId: m[1], clientId: m[2], scopes: ['profile'] }) }
+          : { isAuthenticated: false, toAuth: () => ({ tokenType: 'oauth_token', userId: null, clientId: null }) }
+      },
+      oauthApplications: { get: async id => ({ name: `App ${id}` }) },
+    },
   })
   // The server's cleanup timers mustn't keep the tests running
   const setIntervalBefore = global.setInterval

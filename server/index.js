@@ -44,6 +44,7 @@ const teamLibrary = require('./services/team-library')
 const aiLinks = require('./services/ai-links')
 const aiTokens = require('./services/ai-tokens')
 const { createMcpRoute } = require('./mcp')
+const { createOAuth } = require('./mcp/oauth')
 const { deckAccess: deckAccessFor, ownerOnly, canEdit, canCopy } = collaboration
 const deckLocks = require('./services/deck-locks')
 const education = require('./services/education')
@@ -140,8 +141,9 @@ if (!IS_CLOUD) app.use(localOnly())
 // cookie (a browser-based MCP client calls them from its own origin), and
 // their viewer's preview pages, which it fetches to draw where it can't
 // frame them (server/mcp/viewer.js).
-const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp|ai-preview)\/|^\/mcp$|^\/api\/live\/[^/]+\/(stream|status)$/
-const publicCors = cors()
+const PUBLIC_CORS = /^\/(vendor|uploads|examples|mcp|ai-preview)\/|^\/mcp$|^\/\.well-known\/oauth-|^\/api\/live\/[^/]+\/(stream|status)$/
+// An app that signs in to /mcp from a page reads the 401's WWW-Authenticate
+const publicCors = cors({ exposedHeaders: ['WWW-Authenticate', 'Mcp-Session-Id'] })
 const appCors = cors(corsConfig())
 app.use((req, res, next) => (PUBLIC_CORS.test(req.path) ? publicCors : appCors)(req, res, next))
 
@@ -583,6 +585,22 @@ app.all('/mcp', mcpMissLimiter, mcpTokenLimiter, (req, res, next) => (mcpRoute ?
 // A file sent to an address request_upload gave (server/mcp/index.js): the
 // address is the sign-in, used once
 app.all('/mcp/upload/:ticket', mcpMissLimiter, (req, res, next) => (mcpRoute ? mcpRoute.upload(req, res) : next()))
+// How an AI chat app signs in to /mcp with OAuth (server/mcp/oauth.js): the
+// protected resource metadata a 401 from /mcp points at, and Clerk's
+// authorization server metadata for apps written to an older MCP spec. Not
+// found where there's no sign-in (self-hosted).
+const mcpSignIn = (req, res, next) => (mcpRoute?.oauth?.enabled ? next() : res.status(404).json({ error: 'Not found' }))
+app.get(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'], mcpSignIn, (req, res) => {
+  res.set('Cache-Control', 'public, max-age=300').json(mcpRoute.oauth.resourceMetadata(siteOrigin(req)))
+})
+app.get(['/.well-known/oauth-authorization-server', '/.well-known/oauth-authorization-server/mcp'], mcpSignIn, async (req, res) => {
+  try {
+    res.set('Cache-Control', 'public, max-age=300').json(await mcpRoute.oauth.authorizationServerMetadata())
+  } catch (err) {
+    console.error('MCP OAuth: Clerk\'s metadata failed:', err.message)
+    res.status(502).json({ error: 'The sign-in server could not be reached. Try again shortly.' })
+  }
+})
 
 // Auth: in cloud mode, parses Clerk session and attaches req.userId
 // In self-hosted mode, sets req.userId = null (no-op)
@@ -594,52 +612,57 @@ const provisionCache = new Map()
 
 // User provisioning (cloud mode only): maps Clerk auth ID → internal UUID.
 // On first authenticated request, creates a row in the users table.
+let clerkClient = null
 if (IS_CLOUD) {
-  const CACHE_TTL = 5 * 60 * 1000
-  let clerkClient = null
   try { clerkClient = require('@clerk/express').clerkClient } catch {}
+}
+const PROVISION_TTL = 5 * 60 * 1000
 
+// The account for a Clerk ID, { id, plan }, made the first time that person
+// signs in: by the middleware below, or by an app signing them in to /mcp
+// (server/mcp/oauth.js)
+async function provisionClerkUser(clerkId) {
+  const cached = provisionCache.get(clerkId)
+  if (cached && Date.now() - cached.cachedAt < PROVISION_TTL) return cached
+
+  const { rows } = await storage.query('SELECT id, plan FROM users WHERE auth_id = $1', [clerkId])
+  if (rows.length) {
+    const found = { id: rows[0].id, plan: rows[0].plan, cachedAt: Date.now() }
+    provisionCache.set(clerkId, found)
+    return found
+  }
+
+  let email = `${clerkId}@auth.local`
+  let name = ''
+  let avatarUrl = ''
+  if (clerkClient) {
+    try {
+      const cu = await clerkClient.users.getUser(clerkId)
+      email = cu.emailAddresses?.[0]?.emailAddress || email
+      name = [cu.firstName, cu.lastName].filter(Boolean).join(' ')
+      avatarUrl = cu.imageUrl || ''
+    } catch (e) { console.error('Clerk user fetch failed:', e.message) }
+  }
+
+  const id = uuidv4()
+  await storage.query(
+    'INSERT INTO users (id, email, name, avatar_url, auth_provider, auth_id) VALUES ($1, $2, $3, $4, $5, $6)',
+    [id, email, name, avatarUrl, 'clerk', clerkId]
+  )
+  const made = { id, plan: 'free', cachedAt: Date.now() }
+  provisionCache.set(clerkId, made)
+  return made
+}
+
+if (IS_CLOUD) {
   app.use(async (req, res, next) => {
     if (!req.userId) return next()
     const clerkId = req.userId
     req.authId = clerkId
-
-    const cached = provisionCache.get(clerkId)
-    if (cached && Date.now() - cached.cachedAt < CACHE_TTL) {
-      req.userId = cached.id
-      req.userPlan = cached.plan
-      return next()
-    }
-
     try {
-      const { rows } = await storage.query('SELECT id, plan FROM users WHERE auth_id = $1', [clerkId])
-      if (rows.length) {
-        provisionCache.set(clerkId, { id: rows[0].id, plan: rows[0].plan, cachedAt: Date.now() })
-        req.userId = rows[0].id
-        req.userPlan = rows[0].plan
-        return next()
-      }
-
-      let email = `${clerkId}@auth.local`
-      let name = ''
-      let avatarUrl = ''
-      if (clerkClient) {
-        try {
-          const cu = await clerkClient.users.getUser(clerkId)
-          email = cu.emailAddresses?.[0]?.emailAddress || email
-          name = [cu.firstName, cu.lastName].filter(Boolean).join(' ')
-          avatarUrl = cu.imageUrl || ''
-        } catch (e) { console.error('Clerk user fetch failed:', e.message) }
-      }
-
-      const id = uuidv4()
-      await storage.query(
-        'INSERT INTO users (id, email, name, avatar_url, auth_provider, auth_id) VALUES ($1, $2, $3, $4, $5, $6)',
-        [id, email, name, avatarUrl, 'clerk', clerkId]
-      )
-      provisionCache.set(clerkId, { id, plan: 'free', cachedAt: Date.now() })
-      req.userId = id
-      req.userPlan = 'free'
+      const account = await provisionClerkUser(clerkId)
+      req.userId = account.id
+      req.userPlan = account.plan
     } catch (err) {
       console.error('User provisioning error:', err.message)
       return res.status(500).json({ error: 'User provisioning failed' })
@@ -3060,7 +3083,13 @@ const mcpDatasets = {
     }
   },
 }
-const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads, datasetStore: mcpDatasets }) : null
+// Apps signing in to /mcp with Clerk's OAuth (server/mcp/oauth.js); off
+// without a Clerk publishable key
+const mcpOAuth = IS_CLOUD && storage.query ? createOAuth({
+  storage, clerkClient, provision: provisionClerkUser,
+  safeFetch: (...args) => require('./services/safe-fetch').safeFetch(...args),
+}) : null
+const mcpRoute = IS_CLOUD && storage.query ? createMcpRoute({ storage, origin: siteOrigin, collab, deckPage: mcpDeckPage, sandbox: DECK_PAGE_SANDBOX, localDir: DATA_DIR, createDeck: mcpCreateDeck, uploads: mcpUploads, datasetStore: mcpDatasets, oauth: mcpOAuth }) : null
 
 const aiLinkFailed = (res, err) => res.status(err.status || 500).json({ error: err.expose ? err.message : safeErrorMessage(err) })
 const signedInOnly = (req, res, next) => (req.isGuest ? res.status(403).json({ error: 'Sign in to make AI collaborator links' }) : next())
@@ -3125,11 +3154,17 @@ if (mcpRoute) app.all('/mcp/:secret', mcpMissLimiter, mcpLinkLimiter, mcpRoute)
 // presentation its person can open.
 const aiTokenMakers = (req, res, next) => (req.isGuest || !req.userId ? res.status(403).json({ error: 'Sign in to make AI access tokens' }) : next())
 
-// GET /api/me/ai-tokens - the person's tokens, without their secrets, and
-// the address an agent sends them to
+// GET /api/me/ai-tokens - the person's tokens, without their secrets; the
+// apps they connected by signing in; the address an agent sends tokens to;
+// and whether apps can sign in there
 app.get('/api/me/ai-tokens', aiTokenMakers, async (req, res) => {
   try {
-    res.json({ tokens: await aiTokens.listTokens(storage, req.userId), server: `${siteOrigin(req)}/mcp` })
+    res.json({
+      tokens: await aiTokens.listTokens(storage, req.userId),
+      apps: await aiTokens.listApps(storage, req.userId),
+      server: `${siteOrigin(req)}/mcp`,
+      signIn: !!mcpRoute?.oauth?.enabled,
+    })
   } catch (err) {
     aiLinkFailed(res, err)
   }
@@ -3148,12 +3183,25 @@ app.post('/api/me/ai-tokens', aiTokenMakers, async (req, res) => {
   }
 })
 
-// DELETE /api/me/ai-tokens/:tokenId - the token stops working, and leaves
-// the avatars
+// DELETE /api/me/ai-tokens/:tokenId - the token stops working, or the
+// connected app is turned off, and it leaves the avatars
 app.delete('/api/me/ai-tokens/:tokenId', requireValidId('tokenId'), aiTokenMakers, async (req, res) => {
   try {
     if (!(await aiTokens.revokeToken(storage, req.userId, req.params.tokenId))) return res.status(404).json({ error: 'No such AI access token' })
+    mcpRoute?.oauth?.forget()
     mcpRoute?.leave(req.params.tokenId)
+    res.json({ success: true })
+  } catch (err) {
+    aiLinkFailed(res, err)
+  }
+})
+
+// POST /api/me/ai-tokens/:tokenId/allow - a connected app the person turned
+// off can sign in again
+app.post('/api/me/ai-tokens/:tokenId/allow', requireValidId('tokenId'), aiTokenMakers, async (req, res) => {
+  try {
+    if (!(await aiTokens.allowApp(storage, req.userId, req.params.tokenId))) return res.status(404).json({ error: 'No such app turned off' })
+    mcpRoute?.oauth?.forget()
     res.json({ success: true })
   } catch (err) {
     aiLinkFailed(res, err)

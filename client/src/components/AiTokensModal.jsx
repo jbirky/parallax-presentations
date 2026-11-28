@@ -6,13 +6,15 @@
 // account-level MCP server at /mcp (server/mcp/account.js), so it can list,
 // make and change their presentations as they can. The person names a token,
 // picks how long it lasts and whether it may change anything, and copies it,
-// once; the list below revokes tokens. Opened from the dashboard's account
-// menu, AI access.
+// once; the list below revokes tokens. AI chat apps such as claude.ai sign
+// in to /mcp instead (server/mcp/oauth.js); the apps the person connected
+// are listed too, to turn off or allow again. Opened from the dashboard's
+// account menu, AI access.
 
 import { useEffect, useState } from 'react'
-import { X, Copy, Bot, Trash2 } from 'lucide-react'
+import { X, Copy, Bot, Trash2, Power } from 'lucide-react'
 import { api } from '../utils/api'
-import { linkStatus } from './AiLinkModal'
+import { linkStatus, ago } from './AiLinkModal'
 
 const muted = { fontSize: 12, color: 'var(--text-secondary, #6b6b70)', margin: 0, lineHeight: 1.5 }
 const codeStyle = { display: 'block', fontSize: 11, padding: '8px 10px', borderRadius: 6, background: 'rgba(127,127,127,0.12)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: '4px 0 0' }
@@ -43,6 +45,8 @@ export function SetupSteps({ secret, server }) {
 
 export default function AiTokensModal({ onClose }) {
   const [tokens, setTokens] = useState(null)
+  const [apps, setApps] = useState([])
+  const [signIn, setSignIn] = useState(false)
   const [server, setServer] = useState('')
   const [name, setName] = useState('Claude Code')
   const [days, setDays] = useState(90)
@@ -55,6 +59,8 @@ export default function AiTokensModal({ onClose }) {
   const load = async () => {
     const got = await api.getAiTokens()
     setTokens(got.tokens)
+    setApps(got.apps || [])
+    setSignIn(!!got.signIn)
     setServer(got.server)
   }
   useEffect(() => { load().catch(err => setError(err.message)) }, [])
@@ -153,6 +159,46 @@ export default function AiTokensModal({ onClose }) {
             </ul>
           )}
         </div>
+        {(signIn || apps.length > 0) && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Connected apps</div>
+            {signIn && server && (
+              <p style={{ ...muted, marginBottom: 6 }}>
+                AI chat apps such as claude.ai and ChatGPT need no token: add <code>{server}</code> as a custom connector, and sign in to Parallax when it asks.
+                Each app you connect can make and change presentations, and shows here.
+              </p>
+            )}
+            {apps.length > 0 && (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {apps.map(app => (
+                  <li key={app.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', opacity: app.off ? 0.6 : 1 }}>
+                    <span aria-hidden style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Bot size={14} /></span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {app.name} {app.host && <span style={{ ...muted, fontSize: 11 }}>{app.host}</span>}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>{app.off ? 'Turned off' : app.lastUsedAt ? `Signed in · used ${ago(app.lastUsedAt)}` : 'Signed in'}</div>
+                    </div>
+                    {app.off ? (
+                      <button className="btn btn-ghost" disabled={busy} style={{ fontSize: 12 }}
+                        onClick={() => act(async () => { await api.allowAiApp(app.id); await load() })}>
+                        Allow again
+                      </button>
+                    ) : (
+                      <button className="btn btn-ghost" disabled={busy} title="Stop this app working in your account" aria-label={`Turn off ${app.name}`} style={{ padding: 4, color: 'var(--danger)' }}
+                        onClick={() => {
+                          if (!confirm(`Turn off “${app.name}”? It loses access at once, until you allow it again here.`)) return
+                          act(async () => { await api.revokeAiToken(app.id); await load() })
+                        }}>
+                        <Power size={14} />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {server && !made && <p style={muted}>Agents send tokens to {server}.</p>}
         {error && <p role="alert" style={{ ...muted, color: '#dc2626' }}>{error}</p>}
       </div>

@@ -3,8 +3,10 @@
 
 // The account-level MCP server, at /mcp, in the cloud version. An AI agent,
 // such as Claude Code with the parallax plugin, signs in with an AI access
-// token (services/ai-tokens.js) sent as "Authorization: Bearer <token>", and
-// gets tools for every presentation its person can open: the tools an AI
+// token (services/ai-tokens.js) sent as "Authorization: Bearer <token>"; an
+// AI chat app, such as claude.ai, signs its person in with OAuth (oauth.js)
+// and sends the access token Clerk gave it. Either way it gets tools for
+// every presentation its person can open: the tools an AI
 // collaborator link has on its one presentation (index.js's deckTools), each
 // taking the presentation it's for as `deck`, and tools for the account:
 // list_decks, create_deck, list_templates and list_themes.
@@ -26,7 +28,7 @@ const viewer = require('./viewer')
 const { READ_ONLY, WRITE, text, failure, guarded, serve, wantsStream } = require('./common')
 
 const INSTRUCTIONS = [
-  "This server is a person's Parallax account, reached through an AI access token they made. You can read and change the presentations they can, as they can; anyone with a presentation open sees your changes as you make them, with you in their avatars under the token's name.",
+  "This server is a person's Parallax account, reached through an AI access token they made or an app they signed in to it. You can read and change the presentations they can, as they can; anyone with a presentation open sees your changes as you make them, with you in their avatars under the token's or app's name.",
   'list_decks lists their presentations, and create_deck makes a new one, blank or from a template (list_templates) in a theme (list_themes). Every other tool works on one presentation, named by deck: its id from list_decks or create_deck, or its exact title.',
   'Start with get_deck for its outline, and read a slide with get_slide before changing it. Slides are 960×540 pixels. render_slide shows you a slide as presented, to check how it looks after changing it; check_deck finds problems on every slide without drawing, and render_deck shows every slide at once, for reviewing a whole deck. show_deck gives a link for the person to open it in the editor and watch.',
   'Fill slides through their layouts: add_slide takes a layout with its title, subtitle and body, and update_slide changes them. Text in a layout\'s placeholders shrinks to fit, so it needs no positions. add_element and update_element are for anything else.',
@@ -89,7 +91,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 // createDeck({ userId, userPlan, title, theme, template }) makes a
 // presentation (server/index.js): the new presentation, or null when there's
 // no such template. origin(req) is the site's origin, for editor links.
-function createAccountRoute({ storage, tools, deckTools, origin, createDeck }) {
+function createAccountRoute({ storage, tools, deckTools, origin, createDeck, oauth }) {
   // The presentations account's person can open, most recently changed
   // first: { id, title, slides, updatedAt, where, role, locked }
   async function reachable(account, { query, limit = 50, title } = {}) {
@@ -258,13 +260,23 @@ function createAccountRoute({ storage, tools, deckTools, origin, createDeck }) {
     res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex, nofollow' })
     try {
       const bearer = /^Bearer\s+(\S+)\s*$/i.exec(req.get('authorization') || '')
-      const account = bearer ? await findToken(storage, bearer[1]) : null
+      const secret = bearer?.[1]
+      const signsIn = !!oauth?.enabled
+      // An AI access token, or an access token Clerk gave an app (oauth.js)
+      const account = !secret ? null
+        : secret.startsWith('plx_pat_') || !signsIn ? await findToken(storage, secret)
+          : await oauth.account(secret, origin(req))
+      if (account?.off) {
+        return res.status(403).json({ error: `${account.name} was turned off in Parallax, under AI access. Allow it again there to use it.` })
+      }
       if (!account) {
-        res.set('WWW-Authenticate', 'Bearer realm="parallax"')
+        res.set('WWW-Authenticate', signsIn ? oauth.challenge(origin(req), { invalid: !!secret }) : 'Bearer realm="parallax"')
         return res.status(401).json({
-          error: bearer
-            ? "That isn't an AI access token that works: it was revoked or has expired, or was copied wrong. Make a new one in Parallax, under AI access."
-            : 'Send an AI access token as "Authorization: Bearer <token>". Make one in Parallax, under AI access.',
+          error: secret
+            ? "That isn't an AI access token or sign-in that works: it was revoked or has expired, or was copied wrong. Make a new token in Parallax, under AI access, or sign in again."
+            : signsIn
+              ? 'Sign in to Parallax (an AI chat app does this when you add this server as a connector), or send an AI access token as "Authorization: Bearer <token>". Make one in Parallax, under AI access.'
+              : 'Send an AI access token as "Authorization: Bearer <token>". Make one in Parallax, under AI access.',
         })
       }
       // A person, or /parallax:connect, checking the token

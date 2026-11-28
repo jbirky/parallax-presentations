@@ -8,6 +8,7 @@ vi.mock('../utils/api', () => ({
     getAiTokens: vi.fn(),
     createAiToken: vi.fn(),
     revokeAiToken: vi.fn(async () => ({ success: true })),
+    allowAiApp: vi.fn(async () => ({ success: true })),
   },
 }))
 import { api } from '../utils/api'
@@ -78,6 +79,31 @@ describe('the AI access dialog', () => {
     await click(button('Make token'))
     expect(api.createAiToken).toHaveBeenCalledWith({ name: 'Claude Code', days: 90, scopes: ['decks:read'] })
     expect(el.textContent).toContain('Set its Parallax site option to https://dev.parallax-presentations.com')
+    act(() => root.unmount())
+  })
+
+  it('lists the apps that signed in, to turn off and allow again', async () => {
+    const claude = { id: 'a1', name: 'Claude', host: 'claude.ai', off: false, lastUsedAt: new Date(Date.now() - 2 * 60e3).toISOString() }
+    api.getAiTokens
+      .mockResolvedValueOnce({ tokens: [], apps: [claude], server, signIn: true })
+      .mockResolvedValueOnce({ tokens: [], apps: [{ ...claude, off: true }], server, signIn: true })
+      .mockResolvedValueOnce({ tokens: [], apps: [claude], server, signIn: true })
+    const { el, button, root } = await render()
+    expect(el.textContent).toContain(`add ${server} as a custom connector`)
+    expect(rows(el).find(r => r.includes('Claude'))).toContain('used 2 min ago')
+    await click(button('Turn off Claude'))
+    expect(api.revokeAiToken).toHaveBeenCalledWith('a1')
+    expect(rows(el).find(r => r.includes('Claude'))).toContain('Turned off')
+    await click(button('Allow again'))
+    expect(api.allowAiApp).toHaveBeenCalledWith('a1')
+    expect(rows(el).find(r => r.includes('Claude'))).toContain('Signed in')
+    act(() => root.unmount())
+  })
+
+  it('says nothing of apps where none can sign in', async () => {
+    api.getAiTokens.mockResolvedValue({ tokens: [], apps: [], server, signIn: false })
+    const { el, root } = await render()
+    expect(el.textContent).not.toContain('Connected apps')
     act(() => root.unmount())
   })
 
