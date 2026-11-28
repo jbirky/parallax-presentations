@@ -452,7 +452,7 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
             <div className="lp-wrap">
               <div className="lp-head">
                 <h2 id="lp-start">Start free, or run it yourself</h2>
-                <p>Use Parallax here, or install it on your own server. It’s the same open-source editor either way.</p>
+                <p>Sign up for an account on our servers, or host it on your own server for free. For online presentations and collaborative editing.</p>
               </div>
               <div className="lp-plans">
                 {PLANS.map(plan => (
@@ -484,10 +484,10 @@ export default function LandingPage({ onSignIn, theme = 'dark', onToggleTheme })
 
           <section className="lp-band lp-light" id="install" aria-labelledby="lp-install">
             <div className="lp-wrap">
-              <div className="lp-head">
+              <div className="lp-head lp-head-line">
                 <div className="lp-label">Desktop app</div>
                 <h2 id="lp-install">Install Parallax on <ParallaxWords>your computer</ParallaxWords></h2>
-                <p>For macOS, Windows and Linux. Free and open source, with no account needed.</p>
+                <p>Install the standalone app on macOS, Windows, or Linux. Free and open source, with no account, for offline editing.</p>
               </div>
               <InstallSteps />
             </div>
